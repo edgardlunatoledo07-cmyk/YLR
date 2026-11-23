@@ -1,0 +1,612 @@
+diff --git a/lib/src/identity_card.dart b/lib/src/identity_card.dart
+new file mode 100644
+index 0000000..241953f
+--- /dev/null
++++ b/lib/src/identity_card.dart
+@@ -0,0 +1,182 @@
++import 'package:flutter/material.dart';
++
++import 'identity.dart';
++import 'state.dart';
++import 'style.dart';
++
++/// Vincula la cuenta anonima con un email para que el progreso sea
++/// recuperable. Los datos locales no dependen del uid y no se pierden.
++class YlrIdentityCard extends StatefulWidget {
++  const YlrIdentityCard({super.key, required this.state});
++  final YlrState state;
++  @override
++  State<YlrIdentityCard> createState() => _YlrIdentityCardState();
++}
++
++class _YlrIdentityCardState extends State<YlrIdentityCard> {
++  final _email = TextEditingController();
++  final _password = TextEditingController();
++  bool _busy = false;
++  bool _showForm = false;
++  bool _offerSignIn = false;
++  String? _message;
++  bool _error = false;
++
++  @override
++  void dispose() {
++    _email.dispose();
++    _password.dispose();
++    super.dispose();
++  }
++
++  Future<void> _link() async {
++    setState(() {
++      _busy = true;
++      _message = null;
++    });
++    final outcome = await YlrIdentity.linkWithEmail(
++      email: _email.text,
++      password: _password.text,
++    );
++    if (!mounted) return;
++    setState(() {
++      _busy = false;
++      _error = false;
++      switch (outcome) {
++        case YlrLinkOutcome.linked:
++          _message = 'Cuenta vinculada. Ya podés recuperar el progreso.';
++          _showForm = false;
++        case YlrLinkOutcome.emailInUse:
++          _message = 'Ese email ya tiene cuenta.';
++          _offerSignIn = true;
++        case YlrLinkOutcome.cancelled:
++          _message = 'Revisá el email y usá al menos 6 caracteres de contraseña.';
++          _error = true;
++        case YlrLinkOutcome.failed:
++          _message = 'No se pudo vincular. Intentá de nuevo.';
++          _error = true;
++      }
++    });
++  }
++
++  Future<void> _signInExisting() async {
++    final approved = await showDialog<bool>(
++      context: context,
++      builder: (dialogContext) => AlertDialog(
++        title: const Text('Entrar en una cuenta existente'),
++        content: const Text(
++          'El progreso de este teléfono se conserva, pero no se fusiona. '
++          'El próximo respaldo reemplazará la copia en la nube de esa cuenta '
++          'con el progreso local de este teléfono.',
++        ),
++        actions: [
++          TextButton(
++            onPressed: () => Navigator.pop(dialogContext, false),
++            child: const Text('Cancelar'),
++          ),
++          FilledButton(
++            onPressed: () => Navigator.pop(dialogContext, true),
++            child: const Text('Entrar igual'),
++          ),
++        ],
++      ),
++    );
++    if (approved != true || !mounted) return;
++
++    setState(() => _busy = true);
++    final ok = await YlrIdentity.signInToExisting(
++      email: _email.text,
++      password: _password.text,
++    );
++    if (!mounted) return;
++    setState(() {
++      _busy = false;
++      _error = !ok;
++      _offerSignIn = false;
++      _message = ok
++          ? 'Entraste en esa cuenta. El próximo respaldo usará su progreso '
++              'y reemplazará la copia anterior de esa cuenta.'
++          : 'Contraseña incorrecta para esa cuenta.';
++    });
++    if (ok) {
++      widget.state.invalidateSync();
++      await widget.state.save();
++    }
++  }
++
++  @override
++  Widget build(BuildContext context) => YCard(
++        child: Column(
++          crossAxisAlignment: CrossAxisAlignment.start,
++          children: [
++            Row(children: [
++              const Icon(Icons.key_outlined, color: YColors.blue),
++              const SizedBox(width: 8),
++              Expanded(
++                child: Text('Cuenta recuperable',
++                    style: Theme.of(context).textTheme.titleMedium),
++              ),
++            ]),
++            const SizedBox(height: 8),
++            Text(
++              'Hoy tu cuenta es anónima: si borrás los datos de la app, '
++              'perdés el acceso al respaldo. Vinculá un email para evitarlo.',
++              style: Theme.of(context).textTheme.bodyMedium,
++            ),
++            if (_message != null) ...[
++              const SizedBox(height: 10),
++              YNotice(_message!,
++                  icon: _error ? Icons.info_outline : Icons.check_circle_outline),
++            ],
++            if (_showForm) ...[
++              const SizedBox(height: 12),
++              TextField(
++                controller: _email,
++                keyboardType: TextInputType.emailAddress,
++                autocorrect: false,
++                decoration: const InputDecoration(labelText: 'Email'),
++              ),
++              const SizedBox(height: 8),
++              TextField(
++                controller: _password,
++                obscureText: true,
++                decoration: const InputDecoration(
++                  labelText: 'Contraseña',
++                  helperText: 'Mínimo 6 caracteres',
++                ),
++              ),
++              const SizedBox(height: 12),
++              Wrap(spacing: 8, runSpacing: 8, children: [
++                FilledButton.icon(
++                  onPressed: _busy ? null : _link,
++                  icon: const Icon(Icons.link_rounded),
++                  label: const Text('Vincular'),
++                ),
++                TextButton(
++                  onPressed: _busy ? null : () => setState(() => _showForm = false),
++                  child: const Text('Cancelar'),
++                ),
++              ]),
++            ] else if (_offerSignIn) ...[
++              const SizedBox(height: 12),
++              FilledButton.icon(
++                onPressed: _busy ? null : _signInExisting,
++                icon: const Icon(Icons.login_rounded),
++                label: const Text('Entrar en esa cuenta'),
++              ),
++            ] else ...[
++              const SizedBox(height: 12),
++              OutlinedButton.icon(
++                onPressed: _busy ? null : () => setState(() => _showForm = true),
++                icon: const Icon(Icons.add_link_rounded),
++                label: const Text('Vincular email'),
++              ),
++            ],
++            if (_busy) ...[
++              const SizedBox(height: 10),
++              const LinearProgressIndicator(),
++            ],
++          ],
++        ),
++      );
++}
+diff --git a/lib/src/progress_sync.dart b/lib/src/progress_sync.dart
+index a63eb28..ce18011 100644
+--- a/lib/src/progress_sync.dart
++++ b/lib/src/progress_sync.dart
+@@ -1,52 +1,53 @@
+ import 'package:cloud_firestore/cloud_firestore.dart';
+ import 'package:firebase_auth/firebase_auth.dart';
+ import 'package:firebase_core/firebase_core.dart';
+-import 'package:flutter/foundation.dart';
+ 
++/// Construccion y escritura del respaldo. La cola decide cuando se escribe.
+-/// Envia una copia del progreso sin interferir con SharedPreferences.
+-///
+-/// No recupera progreso remoto ni fusiona dos dispositivos: eso se
+-/// implementara cuando exista una identidad recuperable (p. ej. Google).
+ class YlrProgressSync {
++  static const String appVersion = '0.2.0-beta';
++
++  /// Deriva el codigo de participante del uid. Fuente unica.
++  static String participantCode(String uid) =>
++      'usuario${uid.substring(0, 8).toUpperCase()}';
++
++  static Map<String, dynamic>? buildPayload({
+-  static Future<void> upload({
+     required String? route,
+     required List<String> completed,
+     required List<String> scores,
+     required List<String> simulations,
++  }) {
++    final user = FirebaseAuth.instance.currentUser;
++    if (user == null) return null;
++
++    return <String, dynamic>{
++      'participantCode': participantCode(user.uid),
++      'version': appVersion,
++      'localBackup': <String, dynamic>{
++        'route': route,
++        'completed': List<String>.of(completed),
++        'scores': List<String>.of(scores),
++        'simulations': List<String>.of(simulations),
++      },
++      'lastBackupAt': FieldValue.serverTimestamp(),
+-  }) async {
+-    // Copiar las listas impide que cambios posteriores alteren el respaldo
+-    // de esta operacion mientras se procesa una escritura asincrona.
+-    final backup = <String, dynamic>{
+-      'route': route,
+-      'completed': List<String>.of(completed),
+-      'scores': List<String>.of(scores),
+-      'simulations': List<String>.of(simulations),
+     };
++  }
+ 
++  /// Lanza si no puede escribir, para que la cola marque el error y reintente.
++  static Future<void> write(Map<String, dynamic> payload) async {
++    if (Firebase.apps.isEmpty) {
++      throw StateError('Firebase no inicializado');
++    }
++    final user = FirebaseAuth.instance.currentUser;
++    if (user == null) {
++      throw StateError('Sin sesion de Firebase');
++    }
++    if (payload['participantCode'] != participantCode(user.uid)) {
++      throw StateError('Payload de una sesion anterior');
+-    try {
+-      // En tests o al arrancar sin Firebase la informacion sigue local.
+-      if (Firebase.apps.isEmpty) {
+-        debugPrint(
+-            'YLR Sync: Firebase aun no inicializado; progreso local disponible');
+-        return;
+-      }
+-      final user = FirebaseAuth.instance.currentUser;
+-      if (user == null) {
+-        debugPrint('YLR Sync: sin sesion; progreso local disponible');
+-        return;
+-      }
+-      await FirebaseFirestore.instance
+-          .collection('users')
+-          .doc(user.uid)
+-          .update({
+-        'localBackup': backup,
+-        'lastBackupAt': FieldValue.serverTimestamp(),
+-      });
+-      debugPrint('YLR Sync: progreso confirmado en Firestore');
+-    } on FirebaseException catch (error) {
+-      debugPrint('YLR Sync: ${error.code}: ${error.message}');
+-    } catch (error) {
+-      debugPrint('YLR Sync: error inesperado: $error');
+     }
++    await FirebaseFirestore.instance
++        .collection('users')
++        .doc(user.uid)
++        .set(payload, SetOptions(merge: true))
++        .timeout(const Duration(seconds: 20));
+   }
+ }
+diff --git a/lib/src/state.dart b/lib/src/state.dart
+index f284d03..3c1170b 100644
+--- a/lib/src/state.dart
++++ b/lib/src/state.dart
+@@ -3,9 +3,25 @@
+ import 'package:shared_preferences/shared_preferences.dart';
+ import 'content.dart';
+ import 'progress_sync.dart';
++import 'sync_queue.dart';
++import 'sync_status.dart';
+-import 'cloud_recovery.dart';
+ 
+ class YlrState extends ChangeNotifier {
++  YlrState() {
++    _syncQueue = YlrSyncQueue(
++      writer: YlrProgressSync.write,
++      onStatus: (status) {
++        syncStatus = status;
++        notifyListeners();
++      },
++    );
++  }
++
++  late final YlrSyncQueue _syncQueue;
++  SyncStatus syncStatus = SyncStatus.idle();
++  bool firebaseReady = false;
++  VoidCallback? onNeedsBootstrap;
++
+   RouteKind? route;
+   bool dark = false;
+   bool large = false;
+@@ -22,6 +38,31 @@
+   final List<String> scores = [];
+   final List<String> simulations = [];
+ 
++  @override
++  void dispose() {
++    _syncQueue.dispose();
++    super.dispose();
++  }
++
++  void markFirebaseReady() {
++    firebaseReady = true;
++    _syncQueue.markReady();
++    // Reenvia lo que se guardo localmente antes de tener sesion.
++    _submitCurrentState();
++  }
++
++  void retrySync() => _syncQueue.retryNow();
++
++  /// Se llama cuando la sesion pasa a otra cuenta. La cola se cierra y se
++  /// vuelve a preparar el documento; el proximo guardado arma payload nuevo.
++  void invalidateSync() {
++    firebaseReady = false;
++    _syncQueue.invalidate();
++    syncStatus = SyncStatus.idle();
++    notifyListeners();
++    onNeedsBootstrap?.call();
++  }
++
+   Future<void> restore() async {
+     try {
+       final prefs = await SharedPreferences.getInstance();
+@@ -55,6 +96,17 @@
+     notifyListeners();
+   }
+ 
++  /// Encola el estado actual. No escribe preferencias.
++  void _submitCurrentState() {
++    final payload = YlrProgressSync.buildPayload(
++      route: route?.name,
++      completed: completed.toList(),
++      scores: List<String>.of(scores),
++      simulations: List<String>.of(simulations),
++    );
++    if (payload != null) _syncQueue.submit(payload);
++  }
++
+   Future<void> save() async {
+     try {
+       final prefs = await SharedPreferences.getInstance();
+@@ -71,109 +123,18 @@
+       await prefs.setStringList('scores', scores);
+       await prefs.setStringList('simulations', simulations);
+ 
++      // El guardado local tiene prioridad. El respaldo pasa por la cola,
++      // que descarta estados superados y reintenta los fallos.
++      if (!firebaseReady) onNeedsBootstrap?.call();
++      _submitCurrentState();
+-      // El guardado local tiene prioridad. Firebase se actualiza aparte
+-      // para que un problema de red no impida usar Y.LR.
+-      unawaited(YlrProgressSync.upload(
+-        route: route?.name,
+-        completed: completed.toList(),
+-        scores: List<String>.of(scores),
+-        simulations: List<String>.of(simulations),
+-      ));
+     } catch (e) {
+       debugPrint('YLR: no fue posible guardar las preferencias: $e');
+     }
+   }
+ 
+-  /// Recupera datos de este mismo UID sin borrar los datos locales.
+-  /// Cuando los historiales divergen, cancela la operación completa.
+-  Future<YlrRecoveryReport?> recoverFromCloud() async {
+-    final remote = await YlrCloudRecovery.readServerBackup();
+-    if (remote == null) return null;
+-
+-    final data = remote.data;
+-    const prefixes = ['personal', 'tens', 'universitario'];
+-
+-    List<String> strings(dynamic value) => value is List
+-        ? value.whereType<String>().toList(growable: false)
+-        : const <String>[];
+-
+-    final remoteCompleted = strings(data['completed'])
+-        .where((entry) => prefixes.any((p) => entry.startsWith('$p:')))
+-        .toSet();
+-    final remoteScores = strings(data['scores'])
+-        .where((entry) => prefixes.any((p) => entry.startsWith('$p:')))
+-        .toList();
+-    final remoteSimulations = strings(data['simulations'])
+-        .where((entry) => prefixes.any((p) => entry.startsWith('$p|')))
+-        .toList();
+-
+-    bool compatible(List<String> a, List<String> b) {
+-      final count = a.length < b.length ? a.length : b.length;
+-      for (var index = 0; index < count; index++) {
+-        if (a[index] != b[index]) return false;
+-      }
+-      return true;
+-    }
+-
+-    // Los resultados antiguos no tienen identificador único por intento.
+-    // Si no comparten el mismo prefijo, no es seguro fusionarlos.
+-    if (!compatible(scores, remoteScores) ||
+-        !compatible(simulations, remoteSimulations)) {
+-      return const YlrRecoveryReport(
+-        completedAdded: 0,
+-        scoresAdded: 0,
+-        simulationsAdded: 0,
+-        conflictingHistories: true,
+-      );
+-    }
+-
+-    final beforeCompleted = completed.length;
+-    completed.addAll(remoteCompleted);
+-    final addedCompleted = completed.length - beforeCompleted;
+-
+-    final addedScores = remoteScores.length > scores.length
+-        ? remoteScores.length - scores.length
+-        : 0;
+-    if (addedScores > 0) {
+-      scores.addAll(remoteScores.skip(scores.length));
+-    }
+-
+-    final addedSimulations = remoteSimulations.length > simulations.length
+-        ? remoteSimulations.length - simulations.length
+-        : 0;
+-    if (addedSimulations > 0) {
+-      simulations.addAll(remoteSimulations.skip(simulations.length));
+-    }
+-
+-    var selectedRoute = false;
+-    if (route == null && data['route'] is String) {
+-      for (final value in RouteKind.values) {
+-        if (value.name == data['route']) {
+-          route = value;
+-          selectedRoute = true;
+-          break;
+-        }
+-      }
+-    }
+-
+-    if (addedCompleted > 0 ||
+-        addedScores > 0 ||
+-        addedSimulations > 0 ||
+-        selectedRoute) {
+-      notifyListeners();
+-      await save();
+-    }
+-
+-    return YlrRecoveryReport(
+-      completedAdded: addedCompleted,
+-      scoresAdded: addedScores,
+-      simulationsAdded: addedSimulations,
+-      conflictingHistories: false,
+-    );
+-  }
+-
+   void setNickname(String value) {
++    final trimmed = value.trim();
++    nickname = trimmed.length > 24 ? trimmed.substring(0, 24) : trimmed;
+-    nickname = value.trim();
+     notifyListeners();
+     unawaited(save());
+   }
+diff --git a/lib/src/sync_queue.dart b/lib/src/sync_queue.dart
+new file mode 100644
+index 0000000..0a1c4c7
+--- /dev/null
++++ b/lib/src/sync_queue.dart
+@@ -0,0 +1,125 @@
++import 'dart:async';
++
++import 'sync_status.dart';
++
++typedef SyncWriter = Future<void> Function(Map<String, dynamic> payload);
++
++/// Serializa las escrituras de respaldo.
++///
++/// Dos garantias: nunca hay dos escrituras en curso, y solo sobrevive el
++/// payload mas reciente. Una escritura lenta no puede pisar un estado nuevo.
++class YlrSyncQueue {
++  YlrSyncQueue({
++    required SyncWriter writer,
++    required void Function(SyncStatus status) onStatus,
++    this.retryBase = const Duration(seconds: 2),
++    this.retryMax = const Duration(seconds: 30),
++  })  : _writer = writer,
++        _onStatus = onStatus;
++
++  final SyncWriter _writer;
++  final void Function(SyncStatus status) _onStatus;
++  final Duration retryBase;
++  final Duration retryMax;
++
++  Map<String, dynamic>? _pending;
++  bool _running = false;
++  bool _ready = false;
++  bool _disposed = false;
++  int _failures = 0;
++  int _epoch = 0;
++  Timer? _retry;
++  DateTime? _lastSuccess;
++
++  DateTime? get lastSuccess => _lastSuccess;
++  bool get hasPending => _pending != null;
++  bool get isReady => _ready;
++
++  /// Se llama cuando el documento ya existe y se puede escribir.
++  void markReady() {
++    if (_disposed) return;
++    _ready = true;
++    _failures = 0;
++    _retry?.cancel();
++    _pump();
++  }
++
++  void submit(Map<String, dynamic> payload) {
++    if (_disposed) return;
++    _pending = payload;
++    _retry?.cancel();
++    _pump();
++  }
++
++  /// Reintento manual desde la interfaz.
++  void retryNow() {
++    if (_disposed || !_ready) return;
++    _failures = 0;
++    _retry?.cancel();
++    _pump();
++  }
++
++  /// Cambio de identidad: descarta lo pendiente y cierra la compuerta
++  /// hasta que el documento de la cuenta nueva este preparado.
++  void invalidate() {
++    if (_disposed) return;
++    _epoch++;
++    _ready = false;
++    _pending = null;
++    _failures = 0;
++    _retry?.cancel();
++  }
++
++  void dispose() {
++    _disposed = true;
++    _retry?.cancel();
++    _pending = null;
++  }
++
++  Future<void> _pump() async {
++    if (_disposed || _running || !_ready) return;
++    final payload = _pending;
++    if (payload == null) return;
++
++    final epoch = _epoch;
++    _running = true;
++    _pending = null;
++    _onStatus(SyncStatus.syncing());
++
++    try {
++      await _writer(payload);
++      if (_disposed || epoch != _epoch) return;
++      _failures = 0;
++      _lastSuccess = DateTime.now();
++      if (_pending == null) {
++        _onStatus(SyncStatus.idle(lastSuccess: _lastSuccess));
++      }
++    } catch (error) {
++      if (_disposed || epoch != _epoch) return;
++      // Solo se recupera el payload fallido si no hay uno mas nuevo.
++      _pending ??= payload;
++      _failures++;
++      _onStatus(SyncStatus.error(
++        failures: _failures,
++        detail: error.toString(),
++      ));
++      _scheduleRetry();
++    } finally {
++      _running = false;
++      // Bombea si la compuerta volvio a abrir, sin importar la epoca:
++      // el payload pendiente ya es de la sesion nueva.
++      if (!_disposed && _ready && _pending != null && _failures == 0) {
++        _pump();
++      }
++    }
++  }
++
++  void _scheduleRetry() {
++    _retry?.cancel();
++    final wait = retryBase * _failures;
++    _retry = Timer(wait > retryMax ? retryMax : wait, () {
++      if (_disposed) return;
++      _pump();
++    });
++  }
++}
