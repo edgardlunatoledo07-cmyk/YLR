@@ -47,8 +47,8 @@ class YlrState extends ChangeNotifier {
   void markFirebaseReady() {
     firebaseReady = true;
     _syncQueue.markReady();
-    // Reenvia lo que se guardo localmente antes de tener sesion.
-    _submitCurrentState();
+    // No respaldar valores vacios mientras restore() siga leyendo preferencias.
+    if (ready) _submitCurrentState();
   }
 
   void retrySync() => _syncQueue.retryNow();
@@ -94,6 +94,8 @@ class YlrState extends ChangeNotifier {
     }
     ready = true;
     notifyListeners();
+    // Si Firebase se preparo antes de terminar la restauracion, respaldar ahora.
+    if (firebaseReady) _submitCurrentState();
   }
 
   /// Encola el estado actual. No escribe preferencias.

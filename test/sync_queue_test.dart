@@ -156,7 +156,16 @@ void main() {
     writer.complete(0, fail: true);
     await Future<void>.delayed(Duration.zero);
 
-    expect(statuses, isEmpty, reason: 'el fallo viejo se ignora');
-    expect(writer.received.length, 2, reason: 'el payload nuevo arranca');
+    expect(writer.received, [
+      {'v': 'viejo'},
+      {'v': 'nuevo'},
+    ], reason: 'el payload nuevo arranca');
+    expect(statuses.map((s) => s.phase).toList(), [SyncPhase.syncing],
+        reason: 'solo se reporta la escritura nueva, nunca el error viejo');
+
+    writer.complete(1);
+    await Future<void>.delayed(Duration.zero);
+    expect(statuses.map((s) => s.phase).toList(),
+        [SyncPhase.syncing, SyncPhase.idle]);
   });
 }

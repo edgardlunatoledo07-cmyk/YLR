@@ -16,6 +16,8 @@ class YlrProgressSync {
     required List<String> scores,
     required List<String> simulations,
   }) {
+    // Los tests y el arranque sin Firebase conservan el progreso local.
+    if (Firebase.apps.isEmpty) return null;
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return null;
 
