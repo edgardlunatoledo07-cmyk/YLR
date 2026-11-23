@@ -1,0 +1,148 @@
+diff --git a/firebase.json b/firebase.json
+index 65229bf..d1e3aca 100644
+--- a/firebase.json
++++ b/firebase.json
+@@ -1 +1,30 @@
++{
++  "flutter": {
++    "platforms": {
++      "android": {
++        "default": {
++          "projectId": "ylr-beta",
++          "appId": "1:94157092500:android:e9b3e92b85aec50dd4a681",
++          "fileOutput": "android/app/google-services.json"
++        }
++      },
++      "dart": {
++        "lib/firebase_options.dart": {
++          "projectId": "ylr-beta",
++          "configurations": {
++            "android": "1:94157092500:android:e9b3e92b85aec50dd4a681"
++          }
++        }
++      }
++    }
++  },
++  "firestore": {
++    "rules": "firestore.rules",
++    "indexes": "firestore.indexes.json"
++  },
++  "emulators": {
++    "firestore": { "port": 8080 },
++    "ui": { "enabled": true, "port": 4000 },
++    "singleProjectMode": true
++  }
++}
+-{"flutter":{"platforms":{"android":{"default":{"projectId":"ylr-beta","appId":"1:94157092500:android:e9b3e92b85aec50dd4a681","fileOutput":"android/app/google-services.json"}},"dart":{"lib/firebase_options.dart":{"projectId":"ylr-beta","configurations":{"android":"1:94157092500:android:e9b3e92b85aec50dd4a681"}}}}}}
+\ No newline at end of file
+diff --git a/firestore.indexes.json b/firestore.indexes.json
+new file mode 100644
+index 0000000..415027e
+--- /dev/null
++++ b/firestore.indexes.json
+@@ -0,0 +1,4 @@
++{
++  "indexes": [],
++  "fieldOverrides": []
++}
+diff --git a/firestore.rules b/firestore.rules
+new file mode 100644
+index 0000000..1d4fb1f
+--- /dev/null
++++ b/firestore.rules
+@@ -0,0 +1,65 @@
++rules_version = '2';
++
++service cloud.firestore {
++  match /databases/{database}/documents {
++
++    function isOwner(uid) {
++      return request.auth != null && request.auth.uid == uid;
++    }
++
++    // El lenguaje de reglas no permite validar el tipo de cada elemento.
++    // Se acota cantidad y longitud total, que es lo que protege el documento.
++    function boundedList(value, maxItems, maxTotalChars) {
++      return value is list
++          && value.size() <= maxItems
++          && value.join('').size() <= maxTotalChars;
++    }
++
++    function isValidBackup(b) {
++      return b is map
++          && b.keys().hasOnly(['route', 'completed', 'scores', 'simulations'])
++          && (b.get('route', null) == null || b.get('route', null) is string)
++          && boundedList(b.get('completed', []), 500, 20000)
++          && boundedList(b.get('scores', []), 1000, 20000)
++          && boundedList(b.get('simulations', []), 1000, 160000);
++    }
++
++    function validCode(code) {
++      return code is string && code.matches('^usuario[A-Z0-9]{8}$');
++    }
++
++    // Inmutable una vez fijado; los documentos heredados pueden fijarlo.
++    function codeStable() {
++      return !('participantCode' in resource.data)
++          || request.resource.data.participantCode == resource.data.participantCode;
++    }
++
++    match /users/{uid} {
++      allow read: if isOwner(uid);
++
++      allow create: if isOwner(uid)
++          && request.resource.data.keys().hasOnly(
++               ['participantCode', 'version', 'createdAt', 'localBackup', 'lastBackupAt'])
++          && validCode(request.resource.data.participantCode)
++          && request.resource.data.version is string
++          && request.resource.data.createdAt == request.time
++          && (!('localBackup' in request.resource.data)
++              || isValidBackup(request.resource.data.localBackup));
++
++      allow update: if isOwner(uid)
++          && request.resource.data.diff(resource.data).affectedKeys()
++               .hasOnly(['localBackup', 'lastBackupAt', 'version', 'participantCode'])
++          && validCode(request.resource.data.participantCode)
++          && codeStable()
++          && isValidBackup(request.resource.data.localBackup)
++          && (!('createdAt' in resource.data)
++              || request.resource.data.createdAt == resource.data.createdAt);
++
++      allow delete: if isOwner(uid);
++    }
++
++    match /{document=**} {
++      allow read, write: if false;
++    }
++  }
++}
+diff --git a/lib/main.dart b/lib/main.dart
+index 8ab7c36..06e14bb 100644
+--- a/lib/main.dart
++++ b/lib/main.dart
+@@ -1,24 +1,13 @@
+-import 'dart:async';
+ import 'package:flutter/material.dart';
+-import 'package:firebase_core/firebase_core.dart';
+ 
+-import 'firebase_options.dart';
+ import 'src/app.dart';
+-import 'src/firebase_pilot.dart';
+ 
+ export 'src/app.dart' show YlrApp;
+ export 'src/content.dart'
+     show RouteKind, RouteLabel, Lesson,
+         lessons, glossary, quizQuestions;
+ 
++void main() {
+-Future<void> main() async {
+   WidgetsFlutterBinding.ensureInitialized();
+-
+-  await Firebase.initializeApp(
+-    options: DefaultFirebaseOptions.currentPlatform,
+-  );
+-
+   runApp(const YlrApp());
+-
+-  unawaited(YlrFirebasePilot.setupPilotUser());
+ }
