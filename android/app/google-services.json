@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "94157092500",
+    "project_id": "ylr-beta",
+    "storage_bucket": "ylr-beta.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:94157092500:android:e9b3e92b85aec50dd4a681",
+        "android_client_info": {
+          "package_name": "com.example.app_enfermeria"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "94157092500-kr3rvrg48pb887snojs89uj1dqflo01a.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAZtRke1rInFW6rnz0qCExqcjpIiZd5cgw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "94157092500-kr3rvrg48pb887snojs89uj1dqflo01a.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
