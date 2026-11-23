@@ -1,0 +1,65 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isOwner(uid) {
+      return request.auth != null && request.auth.uid == uid;
+    }
+
+    // El lenguaje de reglas no permite validar el tipo de cada elemento.
+    // Se acota cantidad y longitud total, que es lo que protege el documento.
+    function boundedList(value, maxItems, maxTotalChars) {
+      return value is list
+          && value.size() <= maxItems
+          && value.join('').size() <= maxTotalChars;
+    }
+
+    function isValidBackup(b) {
+      return b is map
+          && b.keys().hasOnly(['route', 'completed', 'scores', 'simulations'])
+          && (b.get('route', null) == null || b.get('route', null) is string)
+          && boundedList(b.get('completed', []), 500, 20000)
+          && boundedList(b.get('scores', []), 1000, 20000)
+          && boundedList(b.get('simulations', []), 1000, 160000);
+    }
+
+    function validCode(code) {
+      return code is string && code.matches('^usuario[A-Z0-9]{8}$');
+    }
+
+    // Inmutable una vez fijado; los documentos heredados pueden fijarlo.
+    function codeStable() {
+      return !('participantCode' in resource.data)
+          || request.resource.data.participantCode == resource.data.participantCode;
+    }
+
+    match /users/{uid} {
+      allow read: if isOwner(uid);
+
+      allow create: if isOwner(uid)
+          && request.resource.data.keys().hasOnly(
+               ['participantCode', 'version', 'createdAt', 'localBackup', 'lastBackupAt'])
+          && validCode(request.resource.data.participantCode)
+          && request.resource.data.version is string
+          && request.resource.data.createdAt == request.time
+          && (!('localBackup' in request.resource.data)
+              || isValidBackup(request.resource.data.localBackup));
+
+      allow update: if isOwner(uid)
+          && request.resource.data.diff(resource.data).affectedKeys()
+               .hasOnly(['localBackup', 'lastBackupAt', 'version', 'participantCode'])
+          && validCode(request.resource.data.participantCode)
+          && codeStable()
+          && isValidBackup(request.resource.data.localBackup)
+          && (!('createdAt' in resource.data)
+              || request.resource.data.createdAt == resource.data.createdAt);
+
+      allow delete: if isOwner(uid);
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

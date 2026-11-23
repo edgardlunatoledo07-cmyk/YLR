@@ -1,5 +1,12 @@
+import 'dart:async';
+
+import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+
+import '../firebase_options.dart';
 import 'content.dart';
+import 'firebase_pilot.dart';
 import 'screens.dart';
 import 'state.dart';
 import 'style.dart';
@@ -10,13 +17,59 @@ class YlrApp extends StatefulWidget {
   State<YlrApp> createState() => _YlrAppState();
 }
 
-class _YlrAppState extends State<YlrApp> {
+class _YlrAppState extends State<YlrApp> with WidgetsBindingObserver {
+  static const _attempts = 3;
+
+  bool _bootstrapping = false;
+  bool _firebaseInitialized = false;
+
   late final YlrState state;
   @override
   void initState() {
     super.initState();
     state = YlrState()..addListener(_refresh);
+    state.onNeedsBootstrap = () => unawaited(_bootstrapFirebase());
+    WidgetsBinding.instance.addObserver(this);
     state.restore();
+    unawaited(_bootstrapFirebase());
+  }
+
+  /// Inicializar Firebase y preparar el usuario son pasos separados:
+  /// si el segundo falla, se reintenta sin volver a inicializar.
+  Future<void> _bootstrapFirebase() async {
+    if (_bootstrapping || state.firebaseReady) return;
+    _bootstrapping = true;
+    try {
+      if (!_firebaseInitialized) {
+        if (Firebase.apps.isEmpty) {
+          await Firebase.initializeApp(
+            options: DefaultFirebaseOptions.currentPlatform,
+          );
+        }
+        _firebaseInitialized = true;
+      }
+      for (var attempt = 1; attempt <= _attempts; attempt++) {
+        if (await YlrFirebasePilot.setupPilotUser()) {
+          if (!mounted) return;
+          state.markFirebaseReady();
+          return;
+        }
+        if (attempt < _attempts) {
+          await Future<void>.delayed(Duration(seconds: 3 * attempt));
+        }
+      }
+    } catch (error) {
+      debugPrint('YLR: bootstrap de Firebase falló: $error');
+    } finally {
+      _bootstrapping = false;
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState lifecycle) {
+    if (lifecycle == AppLifecycleState.resumed && !state.firebaseReady) {
+      unawaited(_bootstrapFirebase());
+    }
   }
 
   void _refresh() {
@@ -25,6 +78,8 @@ class _YlrAppState extends State<YlrApp> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    state.onNeedsBootstrap = null;
     state.removeListener(_refresh);
     state.dispose();
     super.dispose();

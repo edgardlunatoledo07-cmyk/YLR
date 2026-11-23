@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import 'content.dart';
+import 'identity_card.dart';
 import 'state.dart';
 import 'style.dart';
 
@@ -230,6 +231,8 @@ class _YlrProfilePageState extends State<YlrProfilePage> {
               'Es un código de participante, no una contraseña. La cuenta anónima se conserva en esta instalación; si eliminas los datos de la app podrías perder el acceso hasta vincular otro método de ingreso.',
               style: Theme.of(context).textTheme.bodySmall),
         ])),
+        yGap(17),
+        YlrIdentityCard(state: state),
         yGap(17),
         Text('Mis rutas educativas',
             style: Theme.of(context).textTheme.titleLarge),

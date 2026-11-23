@@ -1,52 +1,53 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:flutter/foundation.dart';
 
-/// Envia una copia del progreso sin interferir con SharedPreferences.
-///
-/// No recupera progreso remoto ni fusiona dos dispositivos: eso se
-/// implementara cuando exista una identidad recuperable (p. ej. Google).
+/// Construccion y escritura del respaldo. La cola decide cuando se escribe.
 class YlrProgressSync {
-  static Future<void> upload({
+  static const String appVersion = '0.2.0-beta';
+
+  /// Deriva el codigo de participante del uid. Fuente unica.
+  static String participantCode(String uid) =>
+      'usuario${uid.substring(0, 8).toUpperCase()}';
+
+  static Map<String, dynamic>? buildPayload({
     required String? route,
     required List<String> completed,
     required List<String> scores,
     required List<String> simulations,
-  }) async {
-    // Copiar las listas impide que cambios posteriores alteren el respaldo
-    // de esta operacion mientras se procesa una escritura asincrona.
-    final backup = <String, dynamic>{
-      'route': route,
-      'completed': List<String>.of(completed),
-      'scores': List<String>.of(scores),
-      'simulations': List<String>.of(simulations),
-    };
+  }) {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return null;
 
-    try {
-      // En tests o al arrancar sin Firebase la informacion sigue local.
-      if (Firebase.apps.isEmpty) {
-        debugPrint(
-            'YLR Sync: Firebase aun no inicializado; progreso local disponible');
-        return;
-      }
-      final user = FirebaseAuth.instance.currentUser;
-      if (user == null) {
-        debugPrint('YLR Sync: sin sesion; progreso local disponible');
-        return;
-      }
-      await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .update({
-        'localBackup': backup,
-        'lastBackupAt': FieldValue.serverTimestamp(),
-      });
-      debugPrint('YLR Sync: progreso confirmado en Firestore');
-    } on FirebaseException catch (error) {
-      debugPrint('YLR Sync: ${error.code}: ${error.message}');
-    } catch (error) {
-      debugPrint('YLR Sync: error inesperado: $error');
+    return <String, dynamic>{
+      'participantCode': participantCode(user.uid),
+      'version': appVersion,
+      'localBackup': <String, dynamic>{
+        'route': route,
+        'completed': List<String>.of(completed),
+        'scores': List<String>.of(scores),
+        'simulations': List<String>.of(simulations),
+      },
+      'lastBackupAt': FieldValue.serverTimestamp(),
+    };
+  }
+
+  /// Lanza si no puede escribir, para que la cola marque el error y reintente.
+  static Future<void> write(Map<String, dynamic> payload) async {
+    if (Firebase.apps.isEmpty) {
+      throw StateError('Firebase no inicializado');
     }
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      throw StateError('Sin sesion de Firebase');
+    }
+    if (payload['participantCode'] != participantCode(user.uid)) {
+      throw StateError('Payload de una sesion anterior');
+    }
+    await FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .set(payload, SetOptions(merge: true))
+        .timeout(const Duration(seconds: 20));
   }
 }

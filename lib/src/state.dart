@@ -3,9 +3,25 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'content.dart';
 import 'progress_sync.dart';
-import 'cloud_recovery.dart';
+import 'sync_queue.dart';
+import 'sync_status.dart';
 
 class YlrState extends ChangeNotifier {
+  YlrState() {
+    _syncQueue = YlrSyncQueue(
+      writer: YlrProgressSync.write,
+      onStatus: (status) {
+        syncStatus = status;
+        notifyListeners();
+      },
+    );
+  }
+
+  late final YlrSyncQueue _syncQueue;
+  SyncStatus syncStatus = SyncStatus.idle();
+  bool firebaseReady = false;
+  VoidCallback? onNeedsBootstrap;
+
   RouteKind? route;
   bool dark = false;
   bool large = false;
@@ -21,6 +37,31 @@ class YlrState extends ChangeNotifier {
   final Set<String> completed = {};
   final List<String> scores = [];
   final List<String> simulations = [];
+
+  @override
+  void dispose() {
+    _syncQueue.dispose();
+    super.dispose();
+  }
+
+  void markFirebaseReady() {
+    firebaseReady = true;
+    _syncQueue.markReady();
+    // Reenvia lo que se guardo localmente antes de tener sesion.
+    _submitCurrentState();
+  }
+
+  void retrySync() => _syncQueue.retryNow();
+
+  /// Se llama cuando la sesion pasa a otra cuenta. La cola se cierra y se
+  /// vuelve a preparar el documento; el proximo guardado arma payload nuevo.
+  void invalidateSync() {
+    firebaseReady = false;
+    _syncQueue.invalidate();
+    syncStatus = SyncStatus.idle();
+    notifyListeners();
+    onNeedsBootstrap?.call();
+  }
 
   Future<void> restore() async {
     try {
@@ -55,6 +96,17 @@ class YlrState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Encola el estado actual. No escribe preferencias.
+  void _submitCurrentState() {
+    final payload = YlrProgressSync.buildPayload(
+      route: route?.name,
+      completed: completed.toList(),
+      scores: List<String>.of(scores),
+      simulations: List<String>.of(simulations),
+    );
+    if (payload != null) _syncQueue.submit(payload);
+  }
+
   Future<void> save() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -71,109 +123,18 @@ class YlrState extends ChangeNotifier {
       await prefs.setStringList('scores', scores);
       await prefs.setStringList('simulations', simulations);
 
-      // El guardado local tiene prioridad. Firebase se actualiza aparte
-      // para que un problema de red no impida usar Y.LR.
-      unawaited(YlrProgressSync.upload(
-        route: route?.name,
-        completed: completed.toList(),
-        scores: List<String>.of(scores),
-        simulations: List<String>.of(simulations),
-      ));
+      // El guardado local tiene prioridad. El respaldo pasa por la cola,
+      // que descarta estados superados y reintenta los fallos.
+      if (!firebaseReady) onNeedsBootstrap?.call();
+      _submitCurrentState();
     } catch (e) {
       debugPrint('YLR: no fue posible guardar las preferencias: $e');
     }
   }
 
-  /// Recupera datos de este mismo UID sin borrar los datos locales.
-  /// Cuando los historiales divergen, cancela la operación completa.
-  Future<YlrRecoveryReport?> recoverFromCloud() async {
-    final remote = await YlrCloudRecovery.readServerBackup();
-    if (remote == null) return null;
-
-    final data = remote.data;
-    const prefixes = ['personal', 'tens', 'universitario'];
-
-    List<String> strings(dynamic value) => value is List
-        ? value.whereType<String>().toList(growable: false)
-        : const <String>[];
-
-    final remoteCompleted = strings(data['completed'])
-        .where((entry) => prefixes.any((p) => entry.startsWith('$p:')))
-        .toSet();
-    final remoteScores = strings(data['scores'])
-        .where((entry) => prefixes.any((p) => entry.startsWith('$p:')))
-        .toList();
-    final remoteSimulations = strings(data['simulations'])
-        .where((entry) => prefixes.any((p) => entry.startsWith('$p|')))
-        .toList();
-
-    bool compatible(List<String> a, List<String> b) {
-      final count = a.length < b.length ? a.length : b.length;
-      for (var index = 0; index < count; index++) {
-        if (a[index] != b[index]) return false;
-      }
-      return true;
-    }
-
-    // Los resultados antiguos no tienen identificador único por intento.
-    // Si no comparten el mismo prefijo, no es seguro fusionarlos.
-    if (!compatible(scores, remoteScores) ||
-        !compatible(simulations, remoteSimulations)) {
-      return const YlrRecoveryReport(
-        completedAdded: 0,
-        scoresAdded: 0,
-        simulationsAdded: 0,
-        conflictingHistories: true,
-      );
-    }
-
-    final beforeCompleted = completed.length;
-    completed.addAll(remoteCompleted);
-    final addedCompleted = completed.length - beforeCompleted;
-
-    final addedScores = remoteScores.length > scores.length
-        ? remoteScores.length - scores.length
-        : 0;
-    if (addedScores > 0) {
-      scores.addAll(remoteScores.skip(scores.length));
-    }
-
-    final addedSimulations = remoteSimulations.length > simulations.length
-        ? remoteSimulations.length - simulations.length
-        : 0;
-    if (addedSimulations > 0) {
-      simulations.addAll(remoteSimulations.skip(simulations.length));
-    }
-
-    var selectedRoute = false;
-    if (route == null && data['route'] is String) {
-      for (final value in RouteKind.values) {
-        if (value.name == data['route']) {
-          route = value;
-          selectedRoute = true;
-          break;
-        }
-      }
-    }
-
-    if (addedCompleted > 0 ||
-        addedScores > 0 ||
-        addedSimulations > 0 ||
-        selectedRoute) {
-      notifyListeners();
-      await save();
-    }
-
-    return YlrRecoveryReport(
-      completedAdded: addedCompleted,
-      scoresAdded: addedScores,
-      simulationsAdded: addedSimulations,
-      conflictingHistories: false,
-    );
-  }
-
   void setNickname(String value) {
-    nickname = value.trim();
+    final trimmed = value.trim();
+    nickname = trimmed.length > 24 ? trimmed.substring(0, 24) : trimmed;
     notifyListeners();
     unawaited(save());
   }
