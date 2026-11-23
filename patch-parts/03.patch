@@ -1,0 +1,515 @@
+diff --git a/lib/src/app.dart b/lib/src/app.dart
+index aab88e7..4636302 100644
+--- a/lib/src/app.dart
++++ b/lib/src/app.dart
+@@ -1,5 +1,12 @@
++import 'dart:async';
++
++import 'package:firebase_core/firebase_core.dart';
++import 'package:flutter/foundation.dart';
+ import 'package:flutter/material.dart';
++
++import '../firebase_options.dart';
+ import 'content.dart';
++import 'firebase_pilot.dart';
+ import 'screens.dart';
+ import 'state.dart';
+ import 'style.dart';
+@@ -10,21 +17,69 @@
+   State<YlrApp> createState() => _YlrAppState();
+ }
+ 
++class _YlrAppState extends State<YlrApp> with WidgetsBindingObserver {
++  static const _attempts = 3;
++
++  bool _bootstrapping = false;
++  bool _firebaseInitialized = false;
++
+-class _YlrAppState extends State<YlrApp> {
+   late final YlrState state;
+   @override
+   void initState() {
+     super.initState();
+     state = YlrState()..addListener(_refresh);
++    state.onNeedsBootstrap = () => unawaited(_bootstrapFirebase());
++    WidgetsBinding.instance.addObserver(this);
+     state.restore();
++    unawaited(_bootstrapFirebase());
+   }
+ 
++  /// Inicializar Firebase y preparar el usuario son pasos separados:
++  /// si el segundo falla, se reintenta sin volver a inicializar.
++  Future<void> _bootstrapFirebase() async {
++    if (_bootstrapping || state.firebaseReady) return;
++    _bootstrapping = true;
++    try {
++      if (!_firebaseInitialized) {
++        if (Firebase.apps.isEmpty) {
++          await Firebase.initializeApp(
++            options: DefaultFirebaseOptions.currentPlatform,
++          );
++        }
++        _firebaseInitialized = true;
++      }
++      for (var attempt = 1; attempt <= _attempts; attempt++) {
++        if (await YlrFirebasePilot.setupPilotUser()) {
++          if (!mounted) return;
++          state.markFirebaseReady();
++          return;
++        }
++        if (attempt < _attempts) {
++          await Future<void>.delayed(Duration(seconds: 3 * attempt));
++        }
++      }
++    } catch (error) {
++      debugPrint('YLR: bootstrap de Firebase falló: $error');
++    } finally {
++      _bootstrapping = false;
++    }
++  }
++
++  @override
++  void didChangeAppLifecycleState(AppLifecycleState lifecycle) {
++    if (lifecycle == AppLifecycleState.resumed && !state.firebaseReady) {
++      unawaited(_bootstrapFirebase());
++    }
++  }
++
+   void _refresh() {
+     if (mounted) setState(() {});
+   }
+ 
+   @override
+   void dispose() {
++    WidgetsBinding.instance.removeObserver(this);
++    state.onNeedsBootstrap = null;
+     state.removeListener(_refresh);
+     state.dispose();
+     super.dispose();
+diff --git a/lib/src/cloud_backup_card.dart b/lib/src/cloud_backup_card.dart
+index d785a5b..6b4ff2d 100644
+--- a/lib/src/cloud_backup_card.dart
++++ b/lib/src/cloud_backup_card.dart
+@@ -1,139 +1,79 @@
+ import 'package:flutter/material.dart';
++
+-import 'cloud_recovery.dart';
+ import 'state.dart';
+ import 'style.dart';
++import 'sync_status.dart';
+ 
++/// Superficie del estado de sincronizacion. La recuperacion en otro
++/// telefono vuelve en la etapa del esquema de simulaciones.
++class YlrCloudBackupCard extends StatelessWidget {
+-/// Controles manuales para verificar y recuperar la copia de Firestore.
+-/// No permite acceder al documento de otros usuarios.
+-class YlrCloudBackupCard extends StatefulWidget {
+   const YlrCloudBackupCard({super.key, required this.state});
+   final YlrState state;
+ 
++  String _when(DateTime? date) {
++    if (date == null) return 'todavía sin respaldo';
++    final local = date.toLocal();
++    return '${local.day}/${local.month}/${local.year} '
++        '${local.hour.toString().padLeft(2, '0')}:'
++        '${local.minute.toString().padLeft(2, '0')}';
+-  @override
+-  State<YlrCloudBackupCard> createState() => _YlrCloudBackupCardState();
+-}
+-
+-class _YlrCloudBackupCardState extends State<YlrCloudBackupCard> {
+-  bool busy = false;
+-  String status =
+-      'El progreso se guarda en este teléfono y se respalda en Firebase.';
+-
+-  Future<void> _check() async {
+-    setState(() => busy = true);
+-    try {
+-      final remote = await YlrCloudRecovery.readServerBackup();
+-      if (!mounted) return;
+-      setState(() {
+-        if (remote == null) {
+-          status = 'Aún no hay una copia remota disponible.';
+-        } else {
+-          final completed = remote.data['completed'];
+-          final count = completed is List ? completed.length : 0;
+-          final date = remote.savedAt?.toLocal();
+-          final when = date == null
+-              ? 'fecha desconocida'
+-              : '${date.day}/${date.month}/${date.year} '
+-                  '${date.hour.toString().padLeft(2, '0')}:'
+-                  '${date.minute.toString().padLeft(2, '0')}';
+-          status = 'Copia encontrada: $count lecciones registradas. '
+-              'Último respaldo: $when.';
+-        }
+-      });
+-    } catch (error) {
+-      if (!mounted) return;
+-      setState(() => status = 'No se pudo consultar la nube: $error');
+-    } finally {
+-      if (mounted) setState(() => busy = false);
+-    }
+   }
+ 
++  @override
++  Widget build(BuildContext context) {
++    final status = state.syncStatus;
++    final (IconData icon, Color color, String title, String detail) =
++        switch (status) {
++      SyncStatus(phase: SyncPhase.error) => (
++          Icons.cloud_off_outlined,
++          YColors.rose,
++          'No se pudo respaldar',
++          'El progreso en este teléfono está a salvo. '
++              'Intento ${status.failures} fallido.',
++        ),
++      SyncStatus(phase: SyncPhase.syncing) => (
++          Icons.cloud_upload_outlined,
++          YColors.blue,
++          'Guardando respaldo',
++          'Enviando una copia a la nube.',
++        ),
++      _ => (
++          Icons.cloud_done_outlined,
++          YColors.teal,
++          'Mi respaldo en la nube',
++          'Último respaldo: ${_when(status.lastSuccess)}',
+-  Future<void> _recover() async {
+-    final approved = await showDialog<bool>(
+-      context: context,
+-      builder: (dialogContext) => AlertDialog(
+-        title: const Text('Recuperar mi progreso'),
+-        content: const Text(
+-          'Se consultará el respaldo de tu cuenta actual. '
+-          'Las lecciones se unirán sin eliminar las locales. '
+-          'Los historiales de evaluaciones y simulaciones solo '
+-          'se ampliarán cuando sean compatibles. '
+-          'Si se detecta un conflicto, no se modificará nada.',
+         ),
++    };
++
++    return YCard(
++      child: Column(
++        crossAxisAlignment: CrossAxisAlignment.start,
++        children: [
++          Row(children: [
++            Icon(icon, color: color),
++            const SizedBox(width: 9),
++            Expanded(
++              child: Text(title,
++                  style: Theme.of(context).textTheme.titleMedium),
++            ),
++          ]),
++          const SizedBox(height: 8),
++          Text(detail, style: Theme.of(context).textTheme.bodyMedium),
++          if (status.isError) ...[
++            const SizedBox(height: 12),
++            OutlinedButton.icon(
++              onPressed: state.retrySync,
++              icon: const Icon(Icons.refresh_rounded),
++              label: const Text('Reintentar'),
++            ),
++          ],
++          const SizedBox(height: 6),
++          Text(
++            'Solo tu usuario Firebase actual. Recuperar en otro teléfono '
++            'llega en la próxima etapa.',
++            style: Theme.of(context).textTheme.bodySmall,
+-        actions: [
+-          TextButton(
+-            onPressed: () => Navigator.pop(dialogContext, false),
+-            child: const Text('Cancelar'),
+           ),
+-          FilledButton(
+-            onPressed: () => Navigator.pop(dialogContext, true),
+-            child: const Text('Recuperar'),
+-          ),
+         ],
+       ),
+     );
+-    if (approved != true || !mounted) return;
+-
+-    setState(() => busy = true);
+-    try {
+-      final result = await widget.state.recoverFromCloud();
+-      if (!mounted) return;
+-      setState(() {
+-        if (result == null) {
+-          status = 'No se encontró un respaldo remoto.';
+-        } else if (result.conflictingHistories) {
+-          status = 'Se detectaron historiales distintos. '
+-              'No se alteró el progreso; se requiere revisión antes de fusionar.';
+-        } else if (!result.changed) {
+-          status = 'El progreso local ya contiene los datos del respaldo.';
+-        } else {
+-          status = 'Recuperado: ${result.completedAdded} lecciones, '
+-              '${result.scoresAdded} evaluaciones y '
+-              '${result.simulationsAdded} simulaciones adicionales.';
+-        }
+-      });
+-    } catch (error) {
+-      if (!mounted) return;
+-      setState(() => status = 'No se pudo recuperar: $error');
+-    } finally {
+-      if (mounted) setState(() => busy = false);
+-    }
+   }
+-
+-  @override
+-  Widget build(BuildContext context) => YCard(
+-        child: Column(
+-          crossAxisAlignment: CrossAxisAlignment.start,
+-          children: [
+-            Row(children: [
+-              const Icon(Icons.cloud_done_outlined, color: YColors.teal),
+-              const SizedBox(width: 9),
+-              Expanded(
+-                child: Text('Mi respaldo en la nube',
+-                    style: Theme.of(context).textTheme.titleMedium),
+-              ),
+-            ]),
+-            const SizedBox(height: 8),
+-            Text(status, style: Theme.of(context).textTheme.bodyMedium),
+-            const SizedBox(height: 12),
+-            if (busy) const LinearProgressIndicator(),
+-            Wrap(spacing: 9, runSpacing: 8, children: [
+-              OutlinedButton.icon(
+-                onPressed: busy ? null : _check,
+-                icon: const Icon(Icons.cloud_outlined),
+-                label: const Text('Comprobar copia'),
+-              ),
+-              FilledButton.icon(
+-                onPressed: busy ? null : _recover,
+-                icon: const Icon(Icons.cloud_download_outlined),
+-                label: const Text('Recuperar progreso'),
+-              ),
+-            ]),
+-            const SizedBox(height: 6),
+-            Text(
+-                'Solo tu usuario Firebase actual. '
+-                'Todavía no recupera cuentas en otro teléfono.',
+-                style: Theme.of(context).textTheme.bodySmall),
+-          ],
+-        ),
+-      );
+ }
+diff --git a/lib/src/firebase_pilot.dart b/lib/src/firebase_pilot.dart
+index 63af29e..b8f7b5d 100644
+--- a/lib/src/firebase_pilot.dart
++++ b/lib/src/firebase_pilot.dart
+@@ -1,132 +1,58 @@
+ import 'package:flutter/foundation.dart';
+-import 'package:firebase_core/firebase_core.dart';
+ import 'package:firebase_auth/firebase_auth.dart';
+ import 'package:cloud_firestore/cloud_firestore.dart';
+ import 'package:shared_preferences/shared_preferences.dart';
+ 
++import 'progress_sync.dart';
++
+ class YlrFirebasePilot {
++  /// Prepara el documento del usuario. Devuelve true solo si quedo listo.
++  static Future<bool> setupPilotUser() async {
+-  static Future<void> setupPilotUser() async {
+     try {
+-      // 1. Verificar el proyecto Firebase.
+-      final project = Firebase.app().options.projectId;
+-      debugPrint('YLR Proyecto Firebase: $project');
+-
+-      // 2. Recuperar o crear usuario anónimo.
+       final auth = FirebaseAuth.instance;
+-
+       final user = auth.currentUser ?? (await auth.signInAnonymously()).user;
++      if (user == null) return false;
+ 
+-      if (user == null) {
+-        throw StateError(
+-          'No se pudo obtener el usuario Firebase',
+-        );
+-      }
+-
+-      debugPrint('YLR: Autenticación correcta');
+-
+-      // 3. Referencia al documento del usuario.
+       final reference =
+           FirebaseFirestore.instance.collection('users').doc(user.uid);
+ 
+-      // 4. Consultar directamente el servidor.
+       var snapshot = await reference
++          .get(const GetOptions(source: Source.server))
+-          .get(
+-            const GetOptions(source: Source.server),
+-          )
+           .timeout(const Duration(seconds: 20));
+ 
+-      debugPrint(
+-        'YLR Existe en servidor: ${snapshot.exists}',
+-      );
+-
+-      // 5. Crear perfil si todavía no existe.
+       if (!snapshot.exists) {
+-        final code = 'usuario${user.uid.substring(0, 8).toUpperCase()}';
+-
+         await reference.set({
++          'participantCode': YlrProgressSync.participantCode(user.uid),
++          'version': YlrProgressSync.appVersion,
+-          'participantCode': code,
+-          'version': '0.2.0-beta',
+           'createdAt': FieldValue.serverTimestamp(),
++        }, SetOptions(merge: true)).timeout(const Duration(seconds: 20));
+-        }).timeout(const Duration(seconds: 20));
+ 
+-        debugPrint('YLR: Nuevo usuario creado');
+-
+         snapshot = await reference
++            .get(const GetOptions(source: Source.server))
+-            .get(
+-              const GetOptions(source: Source.server),
+-            )
+             .timeout(const Duration(seconds: 20));
+       }
+ 
++      if (!snapshot.exists) return false;
+-      if (!snapshot.exists) {
+-        throw StateError(
+-          'No se encontró el documento del usuario',
+-        );
+-      }
+ 
+-      debugPrint('YLR: Usuario verificado');
+-
+-      // 6. Comprobar si existe un respaldo.
+       final existingBackup = snapshot.data()?['localBackup'] != null;
+-
+       if (!existingBackup) {
+-        // 7. Leer el progreso local de Y.LR.
+         final prefs = await SharedPreferences.getInstance();
++        await reference.set({
++          'localBackup': <String, dynamic>{
++            'route': prefs.getString('route'),
++            'completed': prefs.getStringList('completed') ?? [],
++            'scores': prefs.getStringList('scores') ?? [],
++            'simulations': prefs.getStringList('simulations') ?? [],
++          },
+-
+-        final localBackup = <String, dynamic>{
+-          'route': prefs.getString('route'),
+-          'completed': prefs.getStringList('completed') ?? [],
+-          'scores': prefs.getStringList('scores') ?? [],
+-          'simulations': prefs.getStringList('simulations') ?? [],
+-        };
+-
+-        // 8. Guardar el primer respaldo en Firestore.
+-        await reference.update({
+-          'localBackup': localBackup,
+           'lastBackupAt': FieldValue.serverTimestamp(),
++        }, SetOptions(merge: true)).timeout(const Duration(seconds: 20));
+-        }).timeout(const Duration(seconds: 20));
+-
+-        debugPrint(
+-          'YLR: Primer respaldo enviado correctamente',
+-        );
+-      } else {
+-        debugPrint(
+-          'YLR: Ya existe un respaldo. '
+-          'No se sobrescribieron los datos.',
+-        );
+       }
+ 
++      debugPrint('YLR: perfil de Firebase listo');
++      return true;
+-      // 9. Verificar el resultado en el servidor.
+-      final verified = await reference
+-          .get(
+-            const GetOptions(source: Source.server),
+-          )
+-          .timeout(const Duration(seconds: 20));
+-
+-      final data = verified.data();
+-
+-      debugPrint(
+-        'YLR Usuario: ${data?['participantCode']}',
+-      );
+-
+-      debugPrint(
+-        'YLR: respaldo confirmado = '
+-        '${data?['localBackup'] != null}',
+-      );
+-
+-      debugPrint(
+-        'YLR: Conexión Firebase finalizada',
+-      );
+-    } on FirebaseException catch (error) {
+-      debugPrint(
+-        'YLR Firebase error: ${error.code}',
+-      );
+-
+-      debugPrint(
+-        'YLR Detalle: ${error.message}',
+-      );
+     } catch (error) {
++      debugPrint('YLR: no se pudo preparar Firebase: $error');
++      return false;
+-      debugPrint('YLR Error: $error');
+     }
+   }
+ }
+diff --git a/lib/src/identity.dart b/lib/src/identity.dart
+new file mode 100644
+index 0000000..cadb0d4
+--- /dev/null
++++ b/lib/src/identity.dart
+@@ -0,0 +1,54 @@
++import 'package:firebase_auth/firebase_auth.dart';
++
++enum YlrLinkOutcome { linked, emailInUse, cancelled, failed }
++
++/// Vinculacion de la cuenta anonima con email.
++///
++/// Los datos locales no dependen del uid, asi que ninguna rama los pierde.
++class YlrIdentity {
++  static Future<YlrLinkOutcome> linkWithEmail({
++    required String email,
++    required String password,
++  }) async {
++    final user = FirebaseAuth.instance.currentUser;
++    if (user == null) return YlrLinkOutcome.failed;
++
++    final credential = EmailAuthProvider.credential(
++      email: email.trim(),
++      password: password,
++    );
++
++    try {
++      await user.linkWithCredential(credential);
++      return YlrLinkOutcome.linked;
++    } on FirebaseAuthException catch (error) {
++      switch (error.code) {
++        case 'credential-already-in-use':
++        case 'email-already-in-use':
++          return YlrLinkOutcome.emailInUse;
++        case 'weak-password':
++        case 'invalid-email':
++        case 'requires-recent-login':
++          return YlrLinkOutcome.cancelled;
++        default:
++          return YlrLinkOutcome.failed;
++      }
++    }
++  }
++
++  /// Rama de colision: la cuenta ya existia. Entra en ella.
++  /// El respaldo de nube pasa a ser el de esa cuenta; lo local se conserva.
++  static Future<bool> signInToExisting({
++    required String email,
++    required String password,
++  }) async {
++    try {
++      await FirebaseAuth.instance.signInWithCredential(
++        EmailAuthProvider.credential(email: email.trim(), password: password),
++      );
++      return true;
++    } on FirebaseAuthException {
++      return false;
++    }
++  }
++}
