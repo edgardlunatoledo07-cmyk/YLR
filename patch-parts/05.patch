@@ -1,0 +1,380 @@
+diff --git a/lib/src/sync_status.dart b/lib/src/sync_status.dart
+new file mode 100644
+index 0000000..dd11cc9
+--- /dev/null
++++ b/lib/src/sync_status.dart
+@@ -0,0 +1,28 @@
++enum SyncPhase { idle, syncing, error }
++
++/// Estado visible de la sincronizacion. Sin esto, un fallo de red
++/// queda solo en el log y el usuario nunca se entera.
++class SyncStatus {
++  SyncStatus.idle({this.lastSuccess})
++      : phase = SyncPhase.idle,
++        failures = 0,
++        detail = null;
++
++  SyncStatus.syncing()
++      : phase = SyncPhase.syncing,
++        failures = 0,
++        detail = null,
++        lastSuccess = null;
++
++  SyncStatus.error({required this.failures, required this.detail})
++      : phase = SyncPhase.error,
++        lastSuccess = null;
++
++  final SyncPhase phase;
++  final int failures;
++  final String? detail;
++  final DateTime? lastSuccess;
++
++  bool get isError => phase == SyncPhase.error;
++  bool get isBusy => phase == SyncPhase.syncing;
++}
+diff --git a/lib/src/ylr_profile_page.dart b/lib/src/ylr_profile_page.dart
+index 8b1815d..97cc668 100644
+--- a/lib/src/ylr_profile_page.dart
++++ b/lib/src/ylr_profile_page.dart
+@@ -3,6 +3,7 @@
+ import 'package:flutter/material.dart';
+ 
+ import 'content.dart';
++import 'identity_card.dart';
+ import 'state.dart';
+ import 'style.dart';
+ 
+@@ -231,6 +232,8 @@
+               style: Theme.of(context).textTheme.bodySmall),
+         ])),
+         yGap(17),
++        YlrIdentityCard(state: state),
++        yGap(17),
+         Text('Mis rutas educativas',
+             style: Theme.of(context).textTheme.titleLarge),
+         yGap(9),
+diff --git a/rules-tests/package.json b/rules-tests/package.json
+new file mode 100644
+index 0000000..2f500e1
+--- /dev/null
++++ b/rules-tests/package.json
+@@ -0,0 +1,12 @@
++{
++  "name": "ylr-rules-tests",
++  "private": true,
++  "scripts": {
++    "test": "mocha --timeout 20000 rules.test.js"
++  },
++  "devDependencies": {
++    "@firebase/rules-unit-testing": "^4.0.0",
++    "firebase": "^11.0.0",
++    "mocha": "^10.7.0"
++  }
++}
+diff --git a/rules-tests/rules.test.js b/rules-tests/rules.test.js
+new file mode 100644
+index 0000000..9e2aa1a
+--- /dev/null
++++ b/rules-tests/rules.test.js
+@@ -0,0 +1,133 @@
++const { initializeTestEnvironment, assertFails, assertSucceeds } = require('@firebase/rules-unit-testing');
++const { doc, getDoc, setDoc, serverTimestamp } = require('firebase/firestore');
++const path = require('path');
++const fs = require('fs');
++
++const PROJECT_ID = 'ylr-beta';
++const UID = 'abc12345xyz';
++const CODE = 'usuarioABC12345';
++
++let env;
++
++function ctx(uid) {
++  return env.authenticatedContext(uid).firestore();
++}
++
++function backup(extra = {}) {
++  return {
++    participantCode: CODE,
++    version: '0.2.0-beta',
++    localBackup: { route: 'personal', completed: [], scores: [], simulations: [] },
++    lastBackupAt: new Date(),
++    ...extra,
++  };
++}
++
++before(async () => {
++  env = await initializeTestEnvironment({
++    projectId: PROJECT_ID,
++    firestore: { rules: fs.readFileSync(path.resolve(__dirname, '..', 'firestore.rules'), 'utf8') },
++  });
++});
++
++after(async () => { await env.cleanup(); });
++
++beforeEach(async () => { await env.clearFirestore(); });
++
++async function seed(uid = UID) {
++  await env.withSecurityRulesDisabled(async (c) => {
++    await setDoc(doc(c.firestore(), 'users', uid), {
++      participantCode: CODE,
++      version: '0.2.0-beta',
++      createdAt: new Date(),
++      localBackup: { route: 'personal', completed: [], scores: [], simulations: [] },
++      lastBackupAt: new Date(),
++    });
++  });
++}
++
++it('el dueno lee su documento', async () => {
++  await seed();
++  await assertSucceeds(getDoc(doc(ctx(UID), 'users', UID)));
++});
++
++it('un extrano no lee el documento ajeno', async () => {
++  await seed();
++  await assertFails(getDoc(doc(ctx('otroUid999'), 'users', UID)));
++});
++
++it('crea con forma valida', async () => {
++  await assertSucceeds(setDoc(doc(ctx(UID), 'users', UID), {
++    ...backup(),
++    createdAt: serverTimestamp(),
++  }));
++});
++
++it('rechaza create sin participantCode', async () => {
++  const { participantCode, ...rest } = backup();
++  await assertFails(setDoc(doc(ctx(UID), 'users', UID), {
++    ...rest,
++    createdAt: serverTimestamp(),
++  }));
++});
++
++it('acepta update de localBackup', async () => {
++  await seed();
++  await assertSucceeds(setDoc(doc(ctx(UID), 'users', UID), {
++    participantCode: CODE,
++    localBackup: { route: 'tens', completed: ['tens:LES-01'], scores: [], simulations: [] },
++    lastBackupAt: new Date(),
++  }, { merge: true }));
++});
++
++it('rechaza update con participantCode invalido', async () => {
++  await seed();
++  await assertFails(setDoc(doc(ctx(UID), 'users', UID), {
++    participantCode: 'otro',
++    localBackup: { route: 'personal', completed: [], scores: [], simulations: [] },
++    lastBackupAt: new Date(),
++  }, { merge: true }));
++});
++
++it('rechaza una lista fuera de tope', async () => {
++  await seed();
++  const huge = Array.from({ length: 1001 }, (_, i) => `personal:${i}`);
++  await assertFails(setDoc(doc(ctx(UID), 'users', UID), {
++    participantCode: CODE,
++    localBackup: { route: 'personal', completed: [], scores: huge, simulations: [] },
++    lastBackupAt: new Date(),
++  }, { merge: true }));
++});
++
++it('rechaza cambiar participantCode por otro codigo valido', async () => {
++  await seed();
++  await assertFails(setDoc(doc(ctx(UID), 'users', UID), {
++    participantCode: 'usuarioZZZZ9999',
++    localBackup: { route: 'personal', completed: [], scores: [], simulations: [] },
++    lastBackupAt: new Date(),
++  }, { merge: true }));
++});
++
++it('permite fijar participantCode en un documento heredado', async () => {
++  await env.withSecurityRulesDisabled(async (c) => {
++    await setDoc(doc(c.firestore(), 'users', UID), {
++      version: '0.1.0',
++      localBackup: { route: 'personal', completed: [], scores: [], simulations: [] },
++      lastBackupAt: new Date(),
++    });
++  });
++  await assertSucceeds(setDoc(doc(ctx(UID), 'users', UID), {
++    participantCode: CODE,
++    localBackup: { route: 'personal', completed: ['personal:LES-01'], scores: [], simulations: [] },
++    lastBackupAt: new Date(),
++  }, { merge: true }));
++});
++
++it('rechaza un elemento que no es string', async () => {
++  await seed();
++  await assertFails(setDoc(doc(ctx(UID), 'users', UID), {
++    participantCode: CODE,
++    localBackup: { route: 'personal', completed: [{ x: 1 }], scores: [], simulations: [] },
++    lastBackupAt: new Date(),
++  }, { merge: true }));
++});
+diff --git a/test/sync_queue_test.dart b/test/sync_queue_test.dart
+new file mode 100644
+index 0000000..3ff0b06
+--- /dev/null
++++ b/test/sync_queue_test.dart
+@@ -0,0 +1,162 @@
++import 'dart:async';
++
++import 'package:flutter_test/flutter_test.dart';
++import 'package:app_enfermeria/src/sync_queue.dart';
++import 'package:app_enfermeria/src/sync_status.dart';
++
++/// Escritor controlable: cada llamada queda pendiente hasta que se libera.
++class _Writer {
++  final List<Map<String, dynamic>> received = [];
++  final List<Completer<void>> pending = [];
++
++  Future<void> call(Map<String, dynamic> payload) {
++    received.add(payload);
++    final completer = Completer<void>();
++    pending.add(completer);
++    return completer.future;
++  }
++
++  void complete(int index, {bool fail = false}) {
++    final completer = pending[index];
++    if (fail) {
++      completer.completeError(StateError('sin red'));
++    } else {
++      completer.complete();
++    }
++  }
++}
++
++void main() {
++  late _Writer writer;
++  late List<SyncStatus> statuses;
++  late YlrSyncQueue queue;
++
++  setUp(() {
++    writer = _Writer();
++    statuses = [];
++    queue = YlrSyncQueue(
++      writer: writer.call,
++      onStatus: statuses.add,
++      retryBase: const Duration(milliseconds: 10),
++      retryMax: const Duration(milliseconds: 20),
++    );
++  });
++
++  tearDown(() => queue.dispose());
++
++  test('no escribe antes de markReady', () async {
++    queue.submit({'v': 1});
++    await Future<void>.delayed(Duration.zero);
++    expect(writer.received, isEmpty);
++
++    queue.markReady();
++    await Future<void>.delayed(Duration.zero);
++    expect(writer.received.length, 1);
++  });
++
++  test('no hay dos escrituras simultaneas', () async {
++    queue.markReady();
++    queue.submit({'v': 1});
++    queue.submit({'v': 2});
++    queue.submit({'v': 3});
++    await Future<void>.delayed(Duration.zero);
++
++    expect(writer.received.length, 1, reason: 'solo la primera arranca');
++
++    writer.complete(0);
++    await Future<void>.delayed(Duration.zero);
++    expect(writer.received.length, 2);
++    expect(writer.received.last, {'v': 3}, reason: 'el intermedio se descarta');
++  });
++
++  test('un payload nuevo durante una escritura lenta gana', () async {
++    queue.markReady();
++    queue.submit({'v': 'viejo'});
++    await Future<void>.delayed(Duration.zero);
++
++    queue.submit({'v': 'nuevo'});
++    writer.complete(0);
++    await Future<void>.delayed(Duration.zero);
++    writer.complete(1);
++    await Future<void>.delayed(Duration.zero);
++
++    expect(writer.received.last, {'v': 'nuevo'});
++    expect(queue.hasPending, isFalse);
++  });
++
++  test('el payload fallido se conserva y se reintenta', () async {
++    queue.markReady();
++    queue.submit({'v': 'unico'});
++    await Future<void>.delayed(Duration.zero);
++
++    writer.complete(0, fail: true);
++    await Future<void>.delayed(const Duration(milliseconds: 40));
++
++    expect(statuses.last.isError, isFalse, reason: 'el reintento ya corrio');
++    expect(writer.received.length, 2);
++    expect(writer.received.last, {'v': 'unico'});
++  });
++
++  test('un payload nuevo desplaza al fallido', () async {
++    queue.markReady();
++    queue.submit({'v': 'viejo'});
++    await Future<void>.delayed(Duration.zero);
++
++    writer.complete(0, fail: true);
++    await Future<void>.delayed(Duration.zero);
++    queue.submit({'v': 'nuevo'});
++    await Future<void>.delayed(Duration.zero);
++
++    expect(writer.received.last, {'v': 'nuevo'});
++  });
++
++  test('el estado reporta error con el conteo', () async {
++    queue.markReady();
++    queue.submit({'v': 1});
++    await Future<void>.delayed(Duration.zero);
++    writer.complete(0, fail: true);
++    await Future<void>.delayed(Duration.zero);
++
++    expect(statuses.last.phase, SyncPhase.error);
++    expect(statuses.last.failures, 1);
++  });
++
++  test('invalidate descarta lo pendiente y cierra la compuerta', () async {
++    queue.markReady();
++    queue.submit({'v': 'viejo'});
++    await Future<void>.delayed(Duration.zero);
++    writer.complete(0, fail: true);
++    await Future<void>.delayed(Duration.zero);
++    expect(queue.hasPending, isTrue);
++
++    queue.invalidate();
++    expect(queue.hasPending, isFalse);
++    expect(queue.isReady, isFalse);
++
++    queue.submit({'v': 'nuevo'});
++    await Future<void>.delayed(Duration.zero);
++    expect(writer.received.length, 1, reason: 'compuerta cerrada');
++
++    queue.markReady();
++    await Future<void>.delayed(Duration.zero);
++    expect(writer.received.last, {'v': 'nuevo'});
++  });
++
++  test('una escritura vieja no pisa el estado de la sesion nueva', () async {
++    queue.markReady();
++    queue.submit({'v': 'viejo'});
++    await Future<void>.delayed(Duration.zero);
++
++    queue.invalidate();
++    queue.markReady();
++    queue.submit({'v': 'nuevo'});
++    await Future<void>.delayed(Duration.zero);
++
++    statuses.clear();
++    writer.complete(0, fail: true);
++    await Future<void>.delayed(Duration.zero);
++
++    expect(statuses, isEmpty, reason: 'el fallo viejo se ignora');
++    expect(writer.received.length, 2, reason: 'el payload nuevo arranca');
++  });
++}
