@@ -1,6 +1,5 @@
 diff --git a/.firebaserc b/.firebaserc
 new file mode 100644
-index 0000000..2c582db
 --- /dev/null
 +++ b/.firebaserc
 @@ -0,0 +1,5 @@
@@ -10,59 +9,27 @@ index 0000000..2c582db
 +  }
 +}
 diff --git a/.gitignore b/.gitignore
-index 79f7eca..7652231 100644
 --- a/.gitignore
 +++ b/.gitignore
-@@ -46,3 +46,4 @@
+@@ -46,3 +46,4 @@ app.*.map.json
  
  # Widget Preview related
  .widget_preview/
 +rules-tests/node_modules/
 diff --git a/android/app/src/main/AndroidManifest.xml b/android/app/src/main/AndroidManifest.xml
-index 1a266fc..8b086a6 100644
 --- a/android/app/src/main/AndroidManifest.xml
 +++ b/android/app/src/main/AndroidManifest.xml
 @@ -1,7 +1,7 @@
  <manifest xmlns:android="http://schemas.android.com/apk/res/android">
  <uses-permission android:name="android.permission.INTERNET"/>
      <application
-+        android:label="Y.LR"
 -        android:label="app_enfermeria"
++        android:label="Y.LR"
          android:name="${applicationName}"
          android:icon="@mipmap/ic_launcher">
          <activity
-@@ -13,10 +13,6 @@
-             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
-             android:hardwareAccelerated="true"
-             android:windowSoftInputMode="adjustResize">
--            <!-- Specifies an Android theme to apply to this Activity as soon as
--                 the Android process has started. This theme is visible to the user
--                 while the Flutter UI initializes. After that, this theme continues
--                 to determine the Window background behind the Flutter UI. -->
-             <meta-data
-               android:name="io.flutter.embedding.android.NormalTheme"
-               android:resource="@style/NormalTheme"
-@@ -26,17 +22,10 @@
-                 <category android:name="android.intent.category.LAUNCHER"/>
-             </intent-filter>
-         </activity>
--        <!-- Don't delete the meta-data below.
--             This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
-         <meta-data
-             android:name="flutterEmbedding"
-             android:value="2" />
-     </application>
--    <!-- Required to query activities that can process text, see:
--         https://developer.android.com/training/package-visibility and
--         https://developer.android.com/reference/android/content/Intent#ACTION_PROCESS_TEXT.
--
--         In particular, this is used by the Flutter engine in io.flutter.plugin.text.ProcessTextPlugin. -->
-     <queries>
-         <intent>
-             <action android:name="android.intent.action.PROCESS_TEXT"/>
 diff --git a/aplicar_fase1.ps1 b/aplicar_fase1.ps1
 new file mode 100644
-index 0000000..f6af69f
 --- /dev/null
 +++ b/aplicar_fase1.ps1
 @@ -0,0 +1,1541 @@
@@ -1608,10 +1575,11 @@ index 0000000..f6af69f
 +Write-Host 'Fase 1 escrita. Sin desplegar reglas.' -ForegroundColor Green
 +Write-Host 'Siguiente: git status; git diff > fase-1.patch; flutter analyze; flutter test'
 diff --git a/firebase.json b/firebase.json
-index 65229bf..d1e3aca 100644
 --- a/firebase.json
 +++ b/firebase.json
 @@ -1 +1,30 @@
+-{"flutter":{"platforms":{"android":{"default":{"projectId":"ylr-beta","appId":"1:94157092500:android:e9b3e92b85aec50dd4a681","fileOutput":"android/app/google-services.json"}},"dart":{"lib/firebase_options.dart":{"projectId":"ylr-beta","configurations":{"android":"1:94157092500:android:e9b3e92b85aec50dd4a681"}}}}}}
+\ No newline at end of file
 +{
 +  "flutter": {
 +    "platforms": {
@@ -1642,11 +1610,8 @@ index 65229bf..d1e3aca 100644
 +    "singleProjectMode": true
 +  }
 +}
--{"flutter":{"platforms":{"android":{"default":{"projectId":"ylr-beta","appId":"1:94157092500:android:e9b3e92b85aec50dd4a681","fileOutput":"android/app/google-services.json"}},"dart":{"lib/firebase_options.dart":{"projectId":"ylr-beta","configurations":{"android":"1:94157092500:android:e9b3e92b85aec50dd4a681"}}}}}}
-\ No newline at end of file
 diff --git a/firestore.indexes.json b/firestore.indexes.json
 new file mode 100644
-index 0000000..415027e
 --- /dev/null
 +++ b/firestore.indexes.json
 @@ -0,0 +1,4 @@
@@ -1656,7 +1621,6 @@ index 0000000..415027e
 +}
 diff --git a/firestore.rules b/firestore.rules
 new file mode 100644
-index 0000000..1d4fb1f
 --- /dev/null
 +++ b/firestore.rules
 @@ -0,0 +1,65 @@
@@ -1726,7 +1690,6 @@ index 0000000..1d4fb1f
 +  }
 +}
 diff --git a/lib/main.dart b/lib/main.dart
-index 8ab7c36..06e14bb 100644
 --- a/lib/main.dart
 +++ b/lib/main.dart
 @@ -1,24 +1,13 @@
@@ -1743,8 +1706,8 @@ index 8ab7c36..06e14bb 100644
      show RouteKind, RouteLabel, Lesson,
          lessons, glossary, quizQuestions;
  
-+void main() {
 -Future<void> main() async {
++void main() {
    WidgetsFlutterBinding.ensureInitialized();
 -
 -  await Firebase.initializeApp(
@@ -1756,7 +1719,6 @@ index 8ab7c36..06e14bb 100644
 -  unawaited(YlrFirebasePilot.setupPilotUser());
  }
 diff --git a/lib/src/app.dart b/lib/src/app.dart
-index aab88e7..4636302 100644
 --- a/lib/src/app.dart
 +++ b/lib/src/app.dart
 @@ -1,5 +1,12 @@
@@ -1772,17 +1734,17 @@ index aab88e7..4636302 100644
  import 'screens.dart';
  import 'state.dart';
  import 'style.dart';
-@@ -10,21 +17,69 @@
+@@ -10,13 +17,59 @@ class YlrApp extends StatefulWidget {
    State<YlrApp> createState() => _YlrAppState();
  }
  
+-class _YlrAppState extends State<YlrApp> {
 +class _YlrAppState extends State<YlrApp> with WidgetsBindingObserver {
 +  static const _attempts = 3;
 +
 +  bool _bootstrapping = false;
 +  bool _firebaseInitialized = false;
 +
--class _YlrAppState extends State<YlrApp> {
    late final YlrState state;
    @override
    void initState() {
@@ -1792,8 +1754,8 @@ index aab88e7..4636302 100644
 +    WidgetsBinding.instance.addObserver(this);
      state.restore();
 +    unawaited(_bootstrapFirebase());
-   }
- 
++  }
++
 +  /// Inicializar Firebase y preparar el usuario son pasos separados:
 +  /// si el segundo falla, se reintenta sin volver a inicializar.
 +  Future<void> _bootstrapFirebase() async {
@@ -1830,11 +1792,10 @@ index aab88e7..4636302 100644
 +    if (lifecycle == AppLifecycleState.resumed && !state.firebaseReady) {
 +      unawaited(_bootstrapFirebase());
 +    }
-+  }
-+
-   void _refresh() {
-     if (mounted) setState(() {});
    }
+ 
+   void _refresh() {
+@@ -25,6 +78,8 @@ class _YlrAppState extends State<YlrApp> {
  
    @override
    void dispose() {
@@ -1844,32 +1805,25 @@ index aab88e7..4636302 100644
      state.dispose();
      super.dispose();
 diff --git a/lib/src/cloud_backup_card.dart b/lib/src/cloud_backup_card.dart
-index d785a5b..6b4ff2d 100644
 --- a/lib/src/cloud_backup_card.dart
 +++ b/lib/src/cloud_backup_card.dart
 @@ -1,139 +1,79 @@
  import 'package:flutter/material.dart';
-+
 -import 'cloud_recovery.dart';
++
  import 'state.dart';
  import 'style.dart';
 +import 'sync_status.dart';
  
-+/// Superficie del estado de sincronizacion. La recuperacion en otro
-+/// telefono vuelve en la etapa del esquema de simulaciones.
-+class YlrCloudBackupCard extends StatelessWidget {
 -/// Controles manuales para verificar y recuperar la copia de Firestore.
 -/// No permite acceder al documento de otros usuarios.
 -class YlrCloudBackupCard extends StatefulWidget {
++/// Superficie del estado de sincronizacion. La recuperacion en otro
++/// telefono vuelve en la etapa del esquema de simulaciones.
++class YlrCloudBackupCard extends StatelessWidget {
    const YlrCloudBackupCard({super.key, required this.state});
    final YlrState state;
  
-+  String _when(DateTime? date) {
-+    if (date == null) return 'todavía sin respaldo';
-+    final local = date.toLocal();
-+    return '${local.day}/${local.month}/${local.year} '
-+        '${local.hour.toString().padLeft(2, '0')}:'
-+        '${local.minute.toString().padLeft(2, '0')}';
 -  @override
 -  State<YlrCloudBackupCard> createState() => _YlrCloudBackupCardState();
 -}
@@ -1906,31 +1860,14 @@ index d785a5b..6b4ff2d 100644
 -    } finally {
 -      if (mounted) setState(() => busy = false);
 -    }
++  String _when(DateTime? date) {
++    if (date == null) return 'todavía sin respaldo';
++    final local = date.toLocal();
++    return '${local.day}/${local.month}/${local.year} '
++        '${local.hour.toString().padLeft(2, '0')}:'
++        '${local.minute.toString().padLeft(2, '0')}';
    }
  
-+  @override
-+  Widget build(BuildContext context) {
-+    final status = state.syncStatus;
-+    final (IconData icon, Color color, String title, String detail) =
-+        switch (status) {
-+      SyncStatus(phase: SyncPhase.error) => (
-+          Icons.cloud_off_outlined,
-+          YColors.rose,
-+          'No se pudo respaldar',
-+          'El progreso en este teléfono está a salvo. '
-+              'Intento ${status.failures} fallido.',
-+        ),
-+      SyncStatus(phase: SyncPhase.syncing) => (
-+          Icons.cloud_upload_outlined,
-+          YColors.blue,
-+          'Guardando respaldo',
-+          'Enviando una copia a la nube.',
-+        ),
-+      _ => (
-+          Icons.cloud_done_outlined,
-+          YColors.teal,
-+          'Mi respaldo en la nube',
-+          'Último respaldo: ${_when(status.lastSuccess)}',
 -  Future<void> _recover() async {
 -    final approved = await showDialog<bool>(
 -      context: context,
@@ -1942,7 +1879,38 @@ index d785a5b..6b4ff2d 100644
 -          'Los historiales de evaluaciones y simulaciones solo '
 -          'se ampliarán cuando sean compatibles. '
 -          'Si se detecta un conflicto, no se modificará nada.',
++  @override
++  Widget build(BuildContext context) {
++    final status = state.syncStatus;
++    final (IconData icon, Color color, String title, String detail) =
++        switch (status) {
++      SyncStatus(phase: SyncPhase.error) => (
++          Icons.cloud_off_outlined,
++          YColors.rose,
++          'No se pudo respaldar',
++          'El progreso en este teléfono está a salvo. '
++              'Intento ${status.failures} fallido.',
          ),
+-        actions: [
+-          TextButton(
+-            onPressed: () => Navigator.pop(dialogContext, false),
+-            child: const Text('Cancelar'),
+-          ),
+-          FilledButton(
+-            onPressed: () => Navigator.pop(dialogContext, true),
+-            child: const Text('Recuperar'),
++      SyncStatus(phase: SyncPhase.syncing) => (
++          Icons.cloud_upload_outlined,
++          YColors.blue,
++          'Guardando respaldo',
++          'Enviando una copia a la nube.',
++        ),
++      _ => (
++          Icons.cloud_done_outlined,
++          YColors.teal,
++          'Mi respaldo en la nube',
++          'Último respaldo: ${_when(status.lastSuccess)}',
++        ),
 +    };
 +
 +    return YCard(
@@ -1972,15 +1940,7 @@ index d785a5b..6b4ff2d 100644
 +            'Solo tu usuario Firebase actual. Recuperar en otro teléfono '
 +            'llega en la próxima etapa.',
 +            style: Theme.of(context).textTheme.bodySmall,
--        actions: [
--          TextButton(
--            onPressed: () => Navigator.pop(dialogContext, false),
--            child: const Text('Cancelar'),
            ),
--          FilledButton(
--            onPressed: () => Navigator.pop(dialogContext, true),
--            child: const Text('Recuperar'),
--          ),
          ],
        ),
      );
@@ -2051,7 +2011,6 @@ index d785a5b..6b4ff2d 100644
 -      );
  }
 diff --git a/lib/src/firebase_pilot.dart b/lib/src/firebase_pilot.dart
-index 63af29e..b8f7b5d 100644
 --- a/lib/src/firebase_pilot.dart
 +++ b/lib/src/firebase_pilot.dart
 @@ -1,132 +1,58 @@
@@ -2064,9 +2023,9 @@ index 63af29e..b8f7b5d 100644
 +import 'progress_sync.dart';
 +
  class YlrFirebasePilot {
+-  static Future<void> setupPilotUser() async {
 +  /// Prepara el documento del usuario. Devuelve true solo si quedo listo.
 +  static Future<bool> setupPilotUser() async {
--  static Future<void> setupPilotUser() async {
      try {
 -      // 1. Verificar el proyecto Firebase.
 -      final project = Firebase.app().options.projectId;
@@ -2092,10 +2051,10 @@ index 63af29e..b8f7b5d 100644
  
 -      // 4. Consultar directamente el servidor.
        var snapshot = await reference
-+          .get(const GetOptions(source: Source.server))
 -          .get(
 -            const GetOptions(source: Source.server),
 -          )
++          .get(const GetOptions(source: Source.server))
            .timeout(const Duration(seconds: 20));
  
 -      debugPrint(
@@ -2107,46 +2066,39 @@ index 63af29e..b8f7b5d 100644
 -        final code = 'usuario${user.uid.substring(0, 8).toUpperCase()}';
 -
          await reference.set({
-+          'participantCode': YlrProgressSync.participantCode(user.uid),
-+          'version': YlrProgressSync.appVersion,
 -          'participantCode': code,
 -          'version': '0.2.0-beta',
++          'participantCode': YlrProgressSync.participantCode(user.uid),
++          'version': YlrProgressSync.appVersion,
            'createdAt': FieldValue.serverTimestamp(),
-+        }, SetOptions(merge: true)).timeout(const Duration(seconds: 20));
 -        }).timeout(const Duration(seconds: 20));
- 
--        debugPrint('YLR: Nuevo usuario creado');
 -
+-        debugPrint('YLR: Nuevo usuario creado');
++        }, SetOptions(merge: true)).timeout(const Duration(seconds: 20));
+ 
          snapshot = await reference
-+            .get(const GetOptions(source: Source.server))
 -            .get(
 -              const GetOptions(source: Source.server),
 -            )
++            .get(const GetOptions(source: Source.server))
              .timeout(const Duration(seconds: 20));
        }
  
-+      if (!snapshot.exists) return false;
 -      if (!snapshot.exists) {
 -        throw StateError(
 -          'No se encontró el documento del usuario',
 -        );
 -      }
- 
--      debugPrint('YLR: Usuario verificado');
 -
+-      debugPrint('YLR: Usuario verificado');
++      if (!snapshot.exists) return false;
+ 
 -      // 6. Comprobar si existe un respaldo.
        final existingBackup = snapshot.data()?['localBackup'] != null;
 -
        if (!existingBackup) {
 -        // 7. Leer el progreso local de Y.LR.
          final prefs = await SharedPreferences.getInstance();
-+        await reference.set({
-+          'localBackup': <String, dynamic>{
-+            'route': prefs.getString('route'),
-+            'completed': prefs.getStringList('completed') ?? [],
-+            'scores': prefs.getStringList('scores') ?? [],
-+            'simulations': prefs.getStringList('simulations') ?? [],
-+          },
 -
 -        final localBackup = <String, dynamic>{
 -          'route': prefs.getString('route'),
@@ -2158,8 +2110,14 @@ index 63af29e..b8f7b5d 100644
 -        // 8. Guardar el primer respaldo en Firestore.
 -        await reference.update({
 -          'localBackup': localBackup,
++        await reference.set({
++          'localBackup': <String, dynamic>{
++            'route': prefs.getString('route'),
++            'completed': prefs.getStringList('completed') ?? [],
++            'scores': prefs.getStringList('scores') ?? [],
++            'simulations': prefs.getStringList('simulations') ?? [],
++          },
            'lastBackupAt': FieldValue.serverTimestamp(),
-+        }, SetOptions(merge: true)).timeout(const Duration(seconds: 20));
 -        }).timeout(const Duration(seconds: 20));
 -
 -        debugPrint(
@@ -2170,10 +2128,9 @@ index 63af29e..b8f7b5d 100644
 -          'YLR: Ya existe un respaldo. '
 -          'No se sobrescribieron los datos.',
 -        );
++        }, SetOptions(merge: true)).timeout(const Duration(seconds: 20));
        }
  
-+      debugPrint('YLR: perfil de Firebase listo');
-+      return true;
 -      // 9. Verificar el resultado en el servidor.
 -      final verified = await reference
 -          .get(
@@ -2203,16 +2160,17 @@ index 63af29e..b8f7b5d 100644
 -      debugPrint(
 -        'YLR Detalle: ${error.message}',
 -      );
++      debugPrint('YLR: perfil de Firebase listo');
++      return true;
      } catch (error) {
+-      debugPrint('YLR Error: $error');
 +      debugPrint('YLR: no se pudo preparar Firebase: $error');
 +      return false;
--      debugPrint('YLR Error: $error');
      }
    }
  }
 diff --git a/lib/src/identity.dart b/lib/src/identity.dart
 new file mode 100644
-index 0000000..cadb0d4
 --- /dev/null
 +++ b/lib/src/identity.dart
 @@ -0,0 +1,54 @@
@@ -2272,10 +2230,9 @@ index 0000000..cadb0d4
 +}
 diff --git a/lib/src/identity_card.dart b/lib/src/identity_card.dart
 new file mode 100644
-index 0000000..241953f
 --- /dev/null
 +++ b/lib/src/identity_card.dart
-@@ -0,0 +1,182 @@
+@@ -0,0 +1,186 @@
 +import 'package:flutter/material.dart';
 +
 +import 'identity.dart';
@@ -2322,10 +2279,11 @@ index 0000000..241953f
 +      _error = false;
 +      switch (outcome) {
 +        case YlrLinkOutcome.linked:
-+          _message = 'Cuenta vinculada. Ya podés recuperar el progreso.';
++          _message = 'Cuenta vinculada. La recuperación del progreso desde otro dispositivo estará disponible en una próxima etapa.';
 +          _showForm = false;
 +        case YlrLinkOutcome.emailInUse:
 +          _message = 'Ese email ya tiene cuenta.';
++          _showForm = false;
 +          _offerSignIn = true;
 +        case YlrLinkOutcome.cancelled:
 +          _message = 'Revisá el email y usá al menos 6 caracteres de contraseña.';
@@ -2362,24 +2320,27 @@ index 0000000..241953f
 +    if (approved != true || !mounted) return;
 +
 +    setState(() => _busy = true);
++    final appState = widget.state;
 +    final ok = await YlrIdentity.signInToExisting(
 +      email: _email.text,
 +      password: _password.text,
 +    );
++    // El UID pudo cambiar aunque la tarjeta dejara de estar montada.
++    // La invalidacion no debe depender del ciclo de vida de esta interfaz.
++    if (ok) {
++      appState.invalidateSync();
++      await appState.save();
++    }
 +    if (!mounted) return;
 +    setState(() {
 +      _busy = false;
 +      _error = !ok;
 +      _offerSignIn = false;
 +      _message = ok
-+          ? 'Entraste en esa cuenta. El próximo respaldo usará su progreso '
-+              'y reemplazará la copia anterior de esa cuenta.'
-+          : 'Contraseña incorrecta para esa cuenta.';
++          ? 'Entraste en esa cuenta. El próximo respaldo reemplazará '
++              'su copia en la nube con el progreso local de este teléfono.'
++          : 'No se pudo entrar en la cuenta existente.';
 +    });
-+    if (ok) {
-+      widget.state.invalidateSync();
-+      await widget.state.save();
-+    }
 +  }
 +
 +  @override
@@ -2459,7 +2420,6 @@ index 0000000..241953f
 +      );
 +}
 diff --git a/lib/src/progress_sync.dart b/lib/src/progress_sync.dart
-index a63eb28..ce18011 100644
 --- a/lib/src/progress_sync.dart
 +++ b/lib/src/progress_sync.dart
 @@ -1,52 +1,53 @@
@@ -2468,12 +2428,13 @@ index a63eb28..ce18011 100644
  import 'package:firebase_core/firebase_core.dart';
 -import 'package:flutter/foundation.dart';
  
-+/// Construccion y escritura del respaldo. La cola decide cuando se escribe.
 -/// Envia una copia del progreso sin interferir con SharedPreferences.
 -///
 -/// No recupera progreso remoto ni fusiona dos dispositivos: eso se
 -/// implementara cuando exista una identidad recuperable (p. ej. Google).
++/// Construccion y escritura del respaldo. La cola decide cuando se escribe.
  class YlrProgressSync {
+-  static Future<void> upload({
 +  static const String appVersion = '0.2.0-beta';
 +
 +  /// Deriva el codigo de participante del uid. Fuente unica.
@@ -2481,11 +2442,18 @@ index a63eb28..ce18011 100644
 +      'usuario${uid.substring(0, 8).toUpperCase()}';
 +
 +  static Map<String, dynamic>? buildPayload({
--  static Future<void> upload({
      required String? route,
      required List<String> completed,
      required List<String> scores,
      required List<String> simulations,
+-  }) async {
+-    // Copiar las listas impide que cambios posteriores alteren el respaldo
+-    // de esta operacion mientras se procesa una escritura asincrona.
+-    final backup = <String, dynamic>{
+-      'route': route,
+-      'completed': List<String>.of(completed),
+-      'scores': List<String>.of(scores),
+-      'simulations': List<String>.of(simulations),
 +  }) {
 +    final user = FirebaseAuth.instance.currentUser;
 +    if (user == null) return null;
@@ -2500,28 +2468,9 @@ index a63eb28..ce18011 100644
 +        'simulations': List<String>.of(simulations),
 +      },
 +      'lastBackupAt': FieldValue.serverTimestamp(),
--  }) async {
--    // Copiar las listas impide que cambios posteriores alteren el respaldo
--    // de esta operacion mientras se procesa una escritura asincrona.
--    final backup = <String, dynamic>{
--      'route': route,
--      'completed': List<String>.of(completed),
--      'scores': List<String>.of(scores),
--      'simulations': List<String>.of(simulations),
      };
 +  }
  
-+  /// Lanza si no puede escribir, para que la cola marque el error y reintente.
-+  static Future<void> write(Map<String, dynamic> payload) async {
-+    if (Firebase.apps.isEmpty) {
-+      throw StateError('Firebase no inicializado');
-+    }
-+    final user = FirebaseAuth.instance.currentUser;
-+    if (user == null) {
-+      throw StateError('Sin sesion de Firebase');
-+    }
-+    if (payload['participantCode'] != participantCode(user.uid)) {
-+      throw StateError('Payload de una sesion anterior');
 -    try {
 -      // En tests o al arrancar sin Firebase la informacion sigue local.
 -      if (Firebase.apps.isEmpty) {
@@ -2546,6 +2495,17 @@ index a63eb28..ce18011 100644
 -      debugPrint('YLR Sync: ${error.code}: ${error.message}');
 -    } catch (error) {
 -      debugPrint('YLR Sync: error inesperado: $error');
++  /// Lanza si no puede escribir, para que la cola marque el error y reintente.
++  static Future<void> write(Map<String, dynamic> payload) async {
++    if (Firebase.apps.isEmpty) {
++      throw StateError('Firebase no inicializado');
++    }
++    final user = FirebaseAuth.instance.currentUser;
++    if (user == null) {
++      throw StateError('Sin sesion de Firebase');
++    }
++    if (payload['participantCode'] != participantCode(user.uid)) {
++      throw StateError('Payload de una sesion anterior');
      }
 +    await FirebaseFirestore.instance
 +        .collection('users')
@@ -2555,16 +2515,15 @@ index a63eb28..ce18011 100644
    }
  }
 diff --git a/lib/src/state.dart b/lib/src/state.dart
-index f284d03..3c1170b 100644
 --- a/lib/src/state.dart
 +++ b/lib/src/state.dart
-@@ -3,9 +3,25 @@
+@@ -3,9 +3,25 @@ import 'package:flutter/foundation.dart';
  import 'package:shared_preferences/shared_preferences.dart';
  import 'content.dart';
  import 'progress_sync.dart';
+-import 'cloud_recovery.dart';
 +import 'sync_queue.dart';
 +import 'sync_status.dart';
--import 'cloud_recovery.dart';
  
  class YlrState extends ChangeNotifier {
 +  YlrState() {
@@ -2585,7 +2544,7 @@ index f284d03..3c1170b 100644
    RouteKind? route;
    bool dark = false;
    bool large = false;
-@@ -22,6 +38,31 @@
+@@ -22,6 +38,31 @@ class YlrState extends ChangeNotifier {
    final List<String> scores = [];
    final List<String> simulations = [];
  
@@ -2617,7 +2576,7 @@ index f284d03..3c1170b 100644
    Future<void> restore() async {
      try {
        final prefs = await SharedPreferences.getInstance();
-@@ -55,6 +96,17 @@
+@@ -55,6 +96,17 @@ class YlrState extends ChangeNotifier {
      notifyListeners();
    }
  
@@ -2635,14 +2594,10 @@ index f284d03..3c1170b 100644
    Future<void> save() async {
      try {
        final prefs = await SharedPreferences.getInstance();
-@@ -71,109 +123,18 @@
+@@ -71,109 +123,18 @@ class YlrState extends ChangeNotifier {
        await prefs.setStringList('scores', scores);
        await prefs.setStringList('simulations', simulations);
  
-+      // El guardado local tiene prioridad. El respaldo pasa por la cola,
-+      // que descarta estados superados y reintenta los fallos.
-+      if (!firebaseReady) onNeedsBootstrap?.call();
-+      _submitCurrentState();
 -      // El guardado local tiene prioridad. Firebase se actualiza aparte
 -      // para que un problema de red no impida usar Y.LR.
 -      unawaited(YlrProgressSync.upload(
@@ -2651,6 +2606,10 @@ index f284d03..3c1170b 100644
 -        scores: List<String>.of(scores),
 -        simulations: List<String>.of(simulations),
 -      ));
++      // El guardado local tiene prioridad. El respaldo pasa por la cola,
++      // que descarta estados superados y reintenta los fallos.
++      if (!firebaseReady) onNeedsBootstrap?.call();
++      _submitCurrentState();
      } catch (e) {
        debugPrint('YLR: no fue posible guardar las preferencias: $e');
      }
@@ -2745,15 +2704,14 @@ index f284d03..3c1170b 100644
 -  }
 -
    void setNickname(String value) {
+-    nickname = value.trim();
 +    final trimmed = value.trim();
 +    nickname = trimmed.length > 24 ? trimmed.substring(0, 24) : trimmed;
--    nickname = value.trim();
      notifyListeners();
      unawaited(save());
    }
 diff --git a/lib/src/sync_queue.dart b/lib/src/sync_queue.dart
 new file mode 100644
-index 0000000..0a1c4c7
 --- /dev/null
 +++ b/lib/src/sync_queue.dart
 @@ -0,0 +1,125 @@
@@ -2884,7 +2842,6 @@ index 0000000..0a1c4c7
 +}
 diff --git a/lib/src/sync_status.dart b/lib/src/sync_status.dart
 new file mode 100644
-index 0000000..dd11cc9
 --- /dev/null
 +++ b/lib/src/sync_status.dart
 @@ -0,0 +1,28 @@
@@ -2917,10 +2874,9 @@ index 0000000..dd11cc9
 +  bool get isBusy => phase == SyncPhase.syncing;
 +}
 diff --git a/lib/src/ylr_profile_page.dart b/lib/src/ylr_profile_page.dart
-index 8b1815d..97cc668 100644
 --- a/lib/src/ylr_profile_page.dart
 +++ b/lib/src/ylr_profile_page.dart
-@@ -3,6 +3,7 @@
+@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
  import 'package:flutter/material.dart';
  
  import 'content.dart';
@@ -2928,7 +2884,7 @@ index 8b1815d..97cc668 100644
  import 'state.dart';
  import 'style.dart';
  
-@@ -231,6 +232,8 @@
+@@ -231,6 +232,8 @@ class _YlrProfilePageState extends State<YlrProfilePage> {
                style: Theme.of(context).textTheme.bodySmall),
          ])),
          yGap(17),
@@ -2939,7 +2895,6 @@ index 8b1815d..97cc668 100644
          yGap(9),
 diff --git a/rules-tests/package.json b/rules-tests/package.json
 new file mode 100644
-index 0000000..2f500e1
 --- /dev/null
 +++ b/rules-tests/package.json
 @@ -0,0 +1,12 @@
@@ -2957,7 +2912,6 @@ index 0000000..2f500e1
 +}
 diff --git a/rules-tests/rules.test.js b/rules-tests/rules.test.js
 new file mode 100644
-index 0000000..9e2aa1a
 --- /dev/null
 +++ b/rules-tests/rules.test.js
 @@ -0,0 +1,133 @@
@@ -3096,7 +3050,6 @@ index 0000000..9e2aa1a
 +});
 diff --git a/test/sync_queue_test.dart b/test/sync_queue_test.dart
 new file mode 100644
-index 0000000..3ff0b06
 --- /dev/null
 +++ b/test/sync_queue_test.dart
 @@ -0,0 +1,162 @@
